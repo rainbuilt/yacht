@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Yacht for ChatGPT",
+  "description": "A development baseline for a Chrome extension that enhances the ChatGPT website.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Yacht",
+    "default_popup": "src/popup/popup.html"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
+      "css": [
+        "src/content/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "permissions": [
+    "activeTab",
+    "storage"
+  ]
+}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Yacht</title>
+    <link rel="stylesheet" href="./popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup__header">
+        <div>
+          <h1>Yacht</h1>
+          <p id="status">Checking active tab...</p>
+        </div>
+      </header>
+
+      <label class="toggle">
+        <span>
+          <strong>Helper badge</strong>
+          <small>Show the injected development marker on ChatGPT.</small>
+        </span>
+        <input id="helper-toggle" type="checkbox">
+      </label>
+
+      <section class="details" aria-live="polite">
+        <dl>
+          <div>
+            <dt>Page</dt>
+            <dd id="page-title">-</dd>
+          </div>
+          <div>
+            <dt>URL</dt>
+            <dd id="page-url">-</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+
+    <script src="./popup.js" type="module"></script>
+  </body>
+</html>
