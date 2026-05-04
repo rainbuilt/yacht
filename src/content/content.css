@@ -1,11 +1,183 @@
-.yacht-extension-root {
+:root {
+  --yacht-link-color: #111111;
+}
+
+.yacht-header-controls {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  margin-inline-end: 4px;
+  font: inherit;
+  color: #111111;
+  white-space: nowrap;
+}
+
+.yacht-header-button,
+.yacht-toggle {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(17, 17, 17, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: inherit;
+  font: inherit;
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.yacht-header-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.yacht-header-button:hover,
+.yacht-toggle:hover {
+  border-color: rgba(17, 17, 17, 0.22);
+  background: #ffffff;
+}
+
+.yacht-header-button:active,
+.yacht-toggle:active {
+  transform: translateY(1px);
+}
+
+.yacht-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.yacht-header-button__icon {
+  display: block;
+  transform: translateY(-0.5px);
+}
+
+.yacht-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.yacht-toggle__track {
+  position: relative;
+  width: 26px;
+  height: 16px;
+  border: 1px solid rgba(17, 17, 17, 0.28);
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.yacht-toggle__track::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #111111;
+  content: "";
+  transition:
+    left 120ms ease,
+    background 120ms ease;
+}
+
+.yacht-toggle[aria-checked="true"] .yacht-toggle__track {
+  border-color: #111111;
+  background: #111111;
+}
+
+.yacht-toggle[aria-checked="true"] .yacht-toggle__track::after {
+  left: 12px;
+  background: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .yacht-header-controls {
+    color: #f4f4f5;
+  }
+
+  .yacht-header-button,
+  .yacht-toggle {
+    border-color: rgba(244, 244, 245, 0.16);
+    background: rgba(24, 24, 27, 0.88);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  }
+
+  .yacht-header-button:hover,
+  .yacht-toggle:hover {
+    border-color: rgba(244, 244, 245, 0.28);
+    background: #18181b;
+  }
+
+  .yacht-toggle__track {
+    border-color: rgba(244, 244, 245, 0.32);
+    background: #18181b;
+  }
+
+  .yacht-toggle__track::after {
+    background: #f4f4f5;
+  }
+
+  .yacht-toggle[aria-checked="true"] .yacht-toggle__track {
+    border-color: #f4f4f5;
+    background: #f4f4f5;
+  }
+
+  .yacht-toggle[aria-checked="true"] .yacht-toggle__track::after {
+    background: #111111;
+  }
+}
+
+.yacht-hidden-turn {
+  display: none !important;
+}
+
+.yacht-source-link {
+  color: var(--yacht-link-color) !important;
+  cursor: pointer;
+  text-decoration-color: var(--yacht-link-color) !important;
+  text-decoration-line: underline !important;
+  text-decoration-thickness: 1px !important;
+  text-underline-offset: 0.14em !important;
+  border-radius: 3px;
+}
+
+.yacht-source-link[data-yacht-underline="false"] {
+  text-decoration-line: none !important;
+}
+
+.yacht-source-link:hover {
+  color: var(--yacht-link-color) !important;
+  background: color-mix(in srgb, var(--yacht-link-color) 14%, transparent);
+}
+
+.yacht-popover {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
   z-index: 2147483647;
-  font-family:
-    Inter,
-    ui-sans-serif,
+  width: min(340px, calc(100vw - 24px));
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.22);
+  font:
+    13px/1.35 ui-sans-serif,
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
@@ -13,25 +185,91 @@
     sans-serif;
 }
 
-.yacht-extension-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 8px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  border-radius: 8px;
-  color: #0f172a;
-  background: #ffffff;
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.16);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
+.yacht-popover__item {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
-.yacht-extension-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10a37f;
+.yacht-popover__item:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.yacht-popover__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yacht-popover__time {
+  color: color-mix(in srgb, currentColor 62%, transparent);
+  font-size: 11px;
+}
+
+.yacht-composer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 88%, transparent);
+  color: color-mix(in srgb, CanvasText 78%, transparent);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.yacht-composer-overlay__message {
+  max-width: 520px;
+  padding: 10px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: Canvas;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.1);
+  font:
+    13px/1.4 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.yacht-diagnostic {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 2147483647;
+  max-width: min(560px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  border: 1px solid rgba(154, 103, 0, 0.25);
+  border-radius: 8px;
+  background: #fff7d6;
+  color: #5f4200;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  font:
+    12px/1.35 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  .yacht-diagnostic {
+    border-color: rgba(251, 191, 36, 0.28);
+    background: #2d250d;
+    color: #f8e5a1;
+  }
 }

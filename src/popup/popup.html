@@ -10,32 +10,89 @@
     <main class="popup">
       <header class="popup__header">
         <div>
-          <h1>Yacht</h1>
-          <p id="status">Checking active tab...</p>
+          <h1>Yacht Navigator</h1>
+          <p class="status-line">
+            <span id="status-dot" class="status-dot" aria-hidden="true"></span>
+            <span id="status">Checking ChatGPT tab...</span>
+          </p>
         </div>
       </header>
 
-      <label class="toggle">
-        <span>
-          <strong>Helper badge</strong>
-          <small>Show the injected development marker on ChatGPT.</small>
-        </span>
-        <input id="helper-toggle" type="checkbox">
-      </label>
-
-      <section class="details" aria-live="polite">
-        <dl>
-          <div>
-            <dt>Page</dt>
-            <dd id="page-title">-</dd>
-          </div>
-          <div>
-            <dt>URL</dt>
-            <dd id="page-url">-</dd>
-          </div>
-        </dl>
+      <section class="panel" aria-labelledby="navigator-title">
+        <label class="switch-row">
+          <span>
+            <strong id="navigator-title">Navigator</strong>
+            <small>Enable Ask subthreads and source links.</small>
+          </span>
+          <input id="enabled-toggle" class="switch-input" type="checkbox" role="switch">
+        </label>
       </section>
+
+      <section class="panel" aria-labelledby="source-links-title">
+        <div class="panel__header">
+          <h2 id="source-links-title">Source Links</h2>
+        </div>
+
+        <label class="field-row" for="link-color">
+          <span>Color</span>
+          <input id="link-color" type="color" value="#111111">
+        </label>
+
+        <label class="check-row">
+          <input id="link-underline" type="checkbox">
+          <span>Underline links</span>
+        </label>
+
+        <div id="source-preview" class="source-preview" aria-hidden="true">
+          <span>Selected source text</span>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="data-title">
+        <div class="panel__header">
+          <h2 id="data-title">Data</h2>
+        </div>
+
+        <button id="export-button" class="button" type="button">Export JSON</button>
+
+        <div class="import-grid">
+          <input id="import-file" class="file-input" type="file" accept="application/json,.json">
+          <label class="button button--secondary" for="import-file">Choose JSON</label>
+          <span id="import-file-name" class="file-name">No file selected</span>
+        </div>
+
+        <div class="segmented" role="radiogroup" aria-label="Import mode">
+          <label>
+            <input type="radio" name="import-mode" value="merge" checked>
+            <span>Merge</span>
+          </label>
+          <label>
+            <input type="radio" name="import-mode" value="replace">
+            <span>Replace</span>
+          </label>
+        </div>
+
+        <button id="import-button" class="button button--secondary" type="button" disabled>
+          Import JSON
+        </button>
+        <button id="reset-button" class="button button--danger" type="button">
+          Reset All Data
+        </button>
+      </section>
+
+      <p id="action-status" class="action-status" role="status" aria-live="polite"></p>
     </main>
+
+    <div id="confirm-dialog" class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title" hidden>
+      <div class="confirm-dialog__panel">
+        <h2 id="confirm-title">Reset all data?</h2>
+        <p>This removes every Yacht source link and subthread record from this browser.</p>
+        <div class="confirm-dialog__actions">
+          <button id="confirm-cancel" class="button button--secondary" type="button">Cancel</button>
+          <button id="confirm-reset" class="button button--dark" type="button">Reset</button>
+        </div>
+      </div>
+    </div>
 
     <script src="./popup.js" type="module"></script>
   </body>
