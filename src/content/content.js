@@ -4,6 +4,10 @@ const SCHEMA_VERSION = 1;
 const HEADER_MOUNT_DELAY_MS = 2500;
 const POST_RENDER_SCROLL_DELAYS_MS = [140, 280, 520, 900];
 const SUBTHREAD_CONTINUATION_ARM_MS = 5 * 60 * 1000;
+const AUTO_CONTEXT_SUPPRESS_MS = 10000;
+const AUTO_CONTEXT_WAIT_MS = 1600;
+const PENDING_ASK_TIMEOUT_MS = 10 * 60 * 1000;
+const UNMATCHED_USER_TURN_GRACE_MS = 1500;
 
 const SELECTORS = {
   header: "header#page-header",
@@ -19,7 +23,8 @@ const SELECTORS = {
     '[data-message-author-role="user"] > button:has(> p.line-clamp-3)',
   repliedContent: 'button[aria-label="More about replied content"]',
   removeRepliedContent: 'button[aria-label="Remove"]',
-  composerContainer: "#thread-bottom-container, #thread-bottom"
+  composerContainer: "#thread-bottom-container, #thread-bottom",
+  sendButton: 'button[data-testid="send-button"], button[aria-label="Send prompt"]'
 };
 
 const DEFAULT_SETTINGS = {
@@ -59,6 +64,11 @@ const state = {
   failSafe: false,
   diagnostic: "",
   repliedContentActive: false,
+  autoContextInProgress: false,
+  allowNextSendClickUntil: 0,
+  suppressSelectionCaptureUntil: 0,
+  suppressAskButtonCaptureUntil: 0,
+  suppressRepliedContentAskUntil: 0,
   suppressHeaderClickUntil: 0,
   suppressSourceClickUntil: 0
 };
@@ -218,12 +228,87 @@ function getMessageKey(message, role = "unknown", index = 0) {
   return `fallback:${role}:${index}:${hashString(text)}`;
 }
 
+function findMessageByKey(messageKey) {
+  if (typeof messageKey !== "string") {
+    return null;
+  }
+
+  if (messageKey.startsWith("message:")) {
+    const messageId = messageKey.slice("message:".length);
+    return document.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+  }
+
+  return readTurnInfos().find((info) => info.key === messageKey)?.message ?? null;
+}
+
+function findTurnInfoForMessageKey(messageKey, turns = readTurnInfos()) {
+  const direct = turns.find((info) => info.key === messageKey);
+  if (direct) {
+    return direct;
+  }
+
+  const message = findMessageByKey(messageKey);
+  const turn = message?.closest?.(SELECTORS.turn);
+  if (!turn) {
+    return null;
+  }
+
+  return turns.find((info) => info.turn === turn) ?? null;
+}
+
 function getUserQuestionText(message) {
   const clone = message.cloneNode(true);
   clone
     .querySelectorAll("button:has(> p.line-clamp-3), .yacht-source-link")
     .forEach((node) => node.remove());
   return shortTitle(clone.textContent ?? "Ask ChatGPT follow-up");
+}
+
+function getUserReferenceTexts(message) {
+  return [...message.querySelectorAll("button")]
+    .filter((button) => button.querySelector("p.line-clamp-3"))
+    .map((button) =>
+      normalizeText(button.querySelector("p.line-clamp-3")?.textContent ?? button.textContent ?? "")
+    )
+    .filter(Boolean);
+}
+
+function normalizeAskReferenceText(text = "") {
+  return normalizeText(text)
+    .replace(/^[\s↪↩↳⤷←→↑↓›»>:\-–—]+/u, "")
+    .replace(/\\([*_`~[\]()#>])/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_`~#]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isAskUserTurnForAnchor(turnInfo, anchor) {
+  if (turnInfo?.role !== "user" || !anchor) {
+    return false;
+  }
+
+  const selectedText = normalizeAskReferenceText(anchor.selectedText ?? "");
+  if (!selectedText) {
+    return false;
+  }
+
+  return getUserReferenceTexts(turnInfo.message).some((referenceText) => {
+    const normalizedReference = normalizeAskReferenceText(referenceText);
+    return (
+      normalizedReference.length >= 2 &&
+      (selectedText.includes(normalizedReference) || normalizedReference.includes(selectedText))
+    );
+  });
+}
+
+function isPendingAskOwnerActive(pending) {
+  return (
+    pending?.conversationId === state.conversationId &&
+    pending.ownerMode === state.mode &&
+    pending.ownerThreadId === state.currentThreadId
+  );
 }
 
 function currentNavKey() {
@@ -413,6 +498,294 @@ function isComposerInteractionTarget(target) {
   return Boolean(element?.closest(SELECTORS.composerContainer));
 }
 
+function isPlainEnterSend(event) {
+  return (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.isComposing
+  );
+}
+
+function getCurrentThreadContext(turns = readTurnInfos()) {
+  const messageTurns = turns.filter((info) => info.role === "user" || info.role === "assistant");
+  if (messageTurns.length === 0) {
+    return null;
+  }
+
+  const currentKeys =
+    state.mode === "subthread"
+      ? getCurrentSubthreadKeys(messageTurns)
+      : getCurrentMainThreadKeys(messageTurns);
+
+  if (!currentKeys?.size) {
+    return null;
+  }
+
+  const latestTurn = messageTurns.at(-1);
+  const lastAssistant = [...messageTurns]
+    .reverse()
+    .find((info) => info.role === "assistant" && currentKeys.has(info.key));
+
+  if (!latestTurn || !lastAssistant) {
+    return null;
+  }
+
+  return {
+    turns: messageTurns,
+    currentKeys,
+    latestTurn,
+    lastAssistant,
+    isAtTail: currentKeys.has(latestTurn.key)
+  };
+}
+
+function getCurrentSubthreadKeys(turns = readTurnInfos()) {
+  const thread = findThread(state.currentThreadId);
+  if (!thread) {
+    return new Set();
+  }
+
+  return effectiveMessageKeysForThread(thread, turns);
+}
+
+function getCurrentMainThreadKeys(turns = readTurnInfos()) {
+  const hiddenKeys = allThreadMessageKeys();
+  return new Set(turns.filter((info) => !hiddenKeys.has(info.key)).map((info) => info.key));
+}
+
+function isMessageKeyInCurrentThread(messageKey, turns = readTurnInfos()) {
+  if (!messageKey) {
+    return false;
+  }
+
+  const currentKeys =
+    state.mode === "subthread" ? getCurrentSubthreadKeys(turns) : getCurrentMainThreadKeys(turns);
+  if (currentKeys.has(messageKey)) {
+    return true;
+  }
+
+  const owningTurnInfo = findTurnInfoForMessageKey(messageKey, turns);
+  return Boolean(owningTurnInfo && currentKeys.has(owningTurnInfo.key));
+}
+
+function getAssistantContextRoot(turnInfo) {
+  return turnInfo?.turn ?? turnInfo?.message ?? null;
+}
+
+function shouldAttachAutoContext() {
+  if (
+    !state.settings.enabled ||
+    state.failSafe ||
+    state.autoContextInProgress ||
+    document.querySelector(SELECTORS.repliedContent)
+  ) {
+    return false;
+  }
+
+  const context = getCurrentThreadContext();
+  return Boolean(
+    context &&
+      !context.isAtTail &&
+      findLastAnswerContextRange(getAssistantContextRoot(context.lastAssistant))
+  );
+}
+
+async function ensureAutoContextForCurrentThread() {
+  const context = getCurrentThreadContext();
+  if (
+    !context?.lastAssistant ||
+    context.isAtTail ||
+    document.querySelector(SELECTORS.repliedContent)
+  ) {
+    return false;
+  }
+
+  const range = findLastAnswerContextRange(getAssistantContextRoot(context.lastAssistant));
+  if (!range) {
+    return false;
+  }
+
+  state.autoContextInProgress = true;
+  const suppressUntil = Date.now() + AUTO_CONTEXT_SUPPRESS_MS;
+  state.suppressSelectionCaptureUntil = suppressUntil;
+  state.suppressAskButtonCaptureUntil = suppressUntil;
+  state.suppressRepliedContentAskUntil = suppressUntil;
+
+  try {
+    selectRangeForNativeAsk(range);
+    const askButton = await waitForElement(findNativeAskButton, AUTO_CONTEXT_WAIT_MS);
+
+    if (!askButton) {
+      return false;
+    }
+
+    askButton.click();
+    const repliedContent = await waitForElement(
+      () => document.querySelector(SELECTORS.repliedContent),
+      AUTO_CONTEXT_WAIT_MS
+    );
+    return Boolean(repliedContent);
+  } finally {
+    window.getSelection()?.removeAllRanges();
+    focusComposer();
+    state.autoContextInProgress = false;
+  }
+}
+
+function findLastAnswerContextRange(message) {
+  const container = findLastTextContainer(message);
+  if (!container) {
+    return null;
+  }
+
+  const textNodes = textNodesUnder(container).filter(
+    (node) => normalizeText(node.nodeValue).length > 0
+  );
+  if (textNodes.length === 0) {
+    return null;
+  }
+
+  const range = document.createRange();
+  range.setStart(textNodes[0], 0);
+  range.setEnd(textNodes.at(-1), textNodes.at(-1).nodeValue.length);
+  return range.collapsed ? null : range;
+}
+
+function findLastTextContainer(message) {
+  if (!message) {
+    return null;
+  }
+
+  const candidates = [
+    ...message.querySelectorAll(
+      [
+        "p",
+        "li",
+        "blockquote",
+        "pre",
+        "code",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "td",
+        "th"
+      ].join(", ")
+    )
+  ].filter(
+    (node) =>
+      normalizeText(node.textContent).length > 0 &&
+      isVisibleElement(node) &&
+      !node.closest(
+        [
+          "button",
+          "[role='button']",
+          "[aria-label='Sources']",
+          "[aria-label='More about replied content']",
+          "[data-testid='copy-turn-action-button']",
+          "[data-testid='conversation-turn-actions']",
+          ".yacht-header-controls",
+          ".yacht-popover",
+          ".yacht-diagnostic"
+        ].join(", ")
+      )
+  );
+
+  return candidates.at(-1) ?? (normalizeText(message.textContent).length > 0 ? message : null);
+}
+
+function selectRangeForNativeAsk(range) {
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+
+  const rect = range.getBoundingClientRect();
+  if (rect.width > 0 && rect.height > 0) {
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    const target = document.elementFromPoint(clientX, clientY) ?? document;
+    target.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        clientY,
+        button: 0
+      })
+    );
+  }
+}
+
+function findNativeAskButton() {
+  return [...document.querySelectorAll("button")]
+    .filter((button) => !button.closest(".yacht-header-controls, .yacht-popover"))
+    .find((button) => isAskButtonLike(button) && isVisibleElement(button));
+}
+
+function waitForElement(resolveElement, timeoutMs) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+
+    function check() {
+      const element = resolveElement();
+      if (element) {
+        resolve(element);
+        return;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(null);
+        return;
+      }
+
+      window.setTimeout(check, 80);
+    }
+
+    check();
+  });
+}
+
+function focusComposer() {
+  const composer =
+    document.querySelector(`${SELECTORS.composerContainer} [contenteditable="true"]`) ??
+    document.querySelector(SELECTORS.composerContainer);
+  composer?.focus?.();
+}
+
+async function handleSendWithAutoContext(sendButton) {
+  if (!shouldAttachAutoContext()) {
+    return false;
+  }
+
+  if (state.pendingAsk && !document.querySelector(SELECTORS.repliedContent)) {
+    state.pendingAsk = null;
+  }
+
+  state.autoContextInProgress = true;
+
+  try {
+    await ensureAutoContextForCurrentThread();
+  } catch (error) {
+    console.debug("[Yacht] failed to attach auto Ask context", error);
+  } finally {
+    state.autoContextInProgress = false;
+  }
+
+  state.allowNextSendClickUntil = Date.now() + 1200;
+  window.setTimeout(() => {
+    const nextSendButton =
+      document.querySelector(SELECTORS.sendButton) ?? sendButton;
+    nextSendButton?.click?.();
+  }, 80);
+  return true;
+}
+
 function setDiagnostic(message) {
   state.diagnostic = message;
 
@@ -575,17 +948,26 @@ async function setEnabled(enabled) {
   await sendRuntime("YACHT_SAVE_SETTINGS", { settings: state.settings });
 
   if (!enabled) {
+    state.pendingAsk = null;
+    state.lastSelection = null;
     state.mode = "main";
     state.currentThreadId = null;
     state.subthreadKnownTurnKeys = null;
     state.subthreadContinuationArmedUntil = 0;
     scheduleSaveNavigationState();
+  } else {
+    await loadConversationData();
+    await loadNavigationState();
   }
 
-  scheduleRender();
+  scheduleRenderPasses();
 }
 
 function captureSelection() {
+  if (Date.now() < state.suppressSelectionCaptureUntil) {
+    return;
+  }
+
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     return;
@@ -699,19 +1081,36 @@ function buildAnchorFromSelection(selection) {
 }
 
 function createPendingAsk(trigger) {
-  if (!state.settings.enabled || state.failSafe || !state.lastSelection) {
+  if (
+    !state.settings.enabled ||
+    state.failSafe ||
+    !state.lastSelection ||
+    state.autoContextInProgress ||
+    Date.now() < state.suppressAskButtonCaptureUntil ||
+    Date.now() < state.suppressRepliedContentAskUntil
+  ) {
+    return;
+  }
+
+  const turns = readTurnInfos();
+  if (!isMessageKeyInCurrentThread(state.lastSelection.sourceMessageKey, turns)) {
+    state.lastSelection = null;
     return;
   }
 
   const anchor = buildAnchorFromSelection(state.lastSelection);
   state.pendingAsk = {
     anchor,
+    conversationId: state.conversationId,
+    ownerMode: state.mode,
+    ownerThreadId: state.currentThreadId,
     parentThreadId: state.mode === "subthread" ? state.currentThreadId : null,
-    baselineKeys: new Set(readTurnInfos().map((info) => info.key)),
+    baselineKeys: new Set(turns.map((info) => info.key)),
     createdAt: Date.now(),
     trigger,
     threadId: null,
-    rootUserMessageKey: null
+    rootUserMessageKey: null,
+    unmatchedUserTurnSeenAt: null
   };
 
   schedulePendingReconcile();
@@ -754,15 +1153,31 @@ function reconcilePendingAsk() {
   const turns = readTurnInfos();
 
   if (!pending.rootUserMessageKey) {
-    const userTurn = turns.find(
+    if (!isPendingAskOwnerActive(pending)) {
+      state.pendingAsk = null;
+      return;
+    }
+
+    const newUserTurns = turns.filter(
       (info) => info.role === "user" && !pending.baselineKeys.has(info.key)
     );
+    const userTurn = newUserTurns.find((info) => isAskUserTurnForAnchor(info, pending.anchor));
 
     if (!userTurn) {
-      if (
-        !document.querySelector(SELECTORS.repliedContent) &&
-        Date.now() - pending.createdAt > 5000
-      ) {
+      const now = Date.now();
+      if (newUserTurns.length > 0) {
+        pending.unmatchedUserTurnSeenAt ??= now;
+      }
+
+      const hasReferenceUserTurn = newUserTurns.some(
+        (info) => getUserReferenceTexts(info.message).length > 0
+      );
+      const shouldClearPlainUserTurn =
+        newUserTurns.length > 0 &&
+        !hasReferenceUserTurn &&
+        now - pending.unmatchedUserTurnSeenAt > UNMATCHED_USER_TURN_GRACE_MS;
+
+      if (shouldClearPlainUserTurn || now - pending.createdAt > PENDING_ASK_TIMEOUT_MS) {
         state.pendingAsk = null;
       }
       return;
@@ -993,6 +1408,21 @@ function handleDocumentClick(event) {
     return;
   }
 
+  const sendButton = target.closest(SELECTORS.sendButton);
+  if (sendButton) {
+    if (Date.now() < state.allowNextSendClickUntil) {
+      return;
+    }
+
+    if (shouldAttachAutoContext()) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      handleSendWithAutoContext(sendButton);
+      return;
+    }
+  }
+
   const headerControl = target.closest(".yacht-header-controls [data-yacht-control]");
   if (headerControl) {
     event.preventDefault();
@@ -1053,7 +1483,13 @@ function handleDocumentClick(event) {
   }
 
   const clickedButton = target.closest("button");
-  if (clickedButton && state.lastSelection && isAskButtonLike(clickedButton)) {
+  if (clickedButton && isAskButtonLike(clickedButton)) {
+    if (Date.now() < state.suppressAskButtonCaptureUntil) {
+      return;
+    }
+    if (!state.lastSelection) {
+      return;
+    }
     createPendingAsk("ask-button-click");
   }
 }
@@ -1067,6 +1503,22 @@ function handleDocumentInput(event) {
 function handleDocumentKeyDown(event) {
   if (isComposerInteractionTarget(event.target)) {
     armSubthreadContinuation();
+
+    if (
+      isPlainEnterSend(event) &&
+      Date.now() >= state.allowNextSendClickUntil &&
+      shouldAttachAutoContext()
+    ) {
+      const sendButton = document.querySelector(SELECTORS.sendButton);
+      if (!sendButton) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      handleSendWithAutoContext(sendButton);
+    }
   }
 }
 
@@ -1236,11 +1688,15 @@ function findDirectParentThread(thread, anchor) {
     return null;
   }
 
+  const turns = readTurnInfos();
+  const owningTurnKey = findTurnInfoForMessageKey(anchor.sourceMessageKey, turns)?.key ?? null;
+
   return (
     state.data.threads.find(
       (candidate) =>
         candidate.threadId !== thread.threadId &&
-        (candidate.messageKeys ?? []).includes(anchor.sourceMessageKey)
+        ((candidate.messageKeys ?? []).includes(anchor.sourceMessageKey) ||
+          (owningTurnKey && (candidate.messageKeys ?? []).includes(owningTurnKey)))
     ) ?? null
   );
 }
@@ -1794,7 +2250,12 @@ function refreshRepliedContentState() {
   const wasActive = state.repliedContentActive;
   state.repliedContentActive = Boolean(document.querySelector(SELECTORS.repliedContent));
 
-  if (state.repliedContentActive && state.lastSelection && !state.pendingAsk) {
+  if (
+    state.repliedContentActive &&
+    state.lastSelection &&
+    !state.pendingAsk &&
+    Date.now() >= state.suppressRepliedContentAskUntil
+  ) {
     createPendingAsk("replied-content");
   }
 
@@ -1806,6 +2267,12 @@ function refreshRepliedContentState() {
 function scheduleRender() {
   clearTimeout(state.renderTimer);
   state.renderTimer = setTimeout(render, 90);
+}
+
+function scheduleRenderPasses(delays = [0, 180, 650]) {
+  for (const delay of delays) {
+    window.setTimeout(scheduleRender, delay);
+  }
 }
 
 function render() {
@@ -1885,8 +2352,25 @@ function handleStorageChange(changes, areaName) {
     return;
   }
 
+  const wasEnabled = state.settings.enabled;
   state.settings = mergeSettings(changes[SETTINGS_KEY].newValue);
-  scheduleRender();
+
+  if (!state.settings.enabled) {
+    state.pendingAsk = null;
+    state.lastSelection = null;
+    scheduleRenderPasses([0, 180]);
+    return;
+  }
+
+  if (!wasEnabled && state.settings.enabled) {
+    loadConversationData()
+      .then(loadNavigationState)
+      .catch((error) => console.error("[Yacht] failed to refresh after enable", error))
+      .finally(scheduleRenderPasses);
+    return;
+  }
+
+  scheduleRenderPasses([0, 180]);
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -1911,7 +2395,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then(loadConversationData)
       .then(loadNavigationState)
       .then(() => {
-        scheduleRender();
+        scheduleRenderPasses();
         sendResponse({ ok: true });
       })
       .catch((error) => sendResponse({ ok: false, error: error.message }));

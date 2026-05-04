@@ -238,6 +238,7 @@ function queueSaveSettings() {
   saveTimer = window.setTimeout(async () => {
     try {
       await saveSettings(readSettingsFromControls());
+      await refreshActiveContentScript();
     } catch (error) {
       setActionStatus(`Could not save settings: ${error.message}`, "error");
     }
