@@ -3,6 +3,7 @@ const NAV_KEY_PREFIX = "yacht.nav.";
 const SCHEMA_VERSION = 1;
 const HEADER_MOUNT_DELAY_MS = 2500;
 const POST_RENDER_SCROLL_DELAYS_MS = [140, 280, 520, 900];
+const SUBTHREAD_CONTINUATION_ARM_MS = 5 * 60 * 1000;
 
 const SELECTORS = {
   header: "header#page-header",
@@ -52,6 +53,8 @@ const state = {
   saveNavTimer: null,
   scrollTimers: [],
   scrollToken: 0,
+  subthreadKnownTurnKeys: null,
+  subthreadContinuationArmedUntil: 0,
   rendering: false,
   failSafe: false,
   diagnostic: "",
@@ -153,7 +156,7 @@ function textNodesUnder(root) {
 
       if (
         parent?.closest(
-          "script, style, textarea, button, .yacht-header-controls, .yacht-popover, .yacht-diagnostic, .yacht-composer-overlay"
+          "script, style, textarea, button, .yacht-header-controls, .yacht-popover, .yacht-diagnostic"
         )
       ) {
         return NodeFilter.FILTER_REJECT;
@@ -265,11 +268,15 @@ async function loadNavigationState() {
   if (nav?.mode === "subthread" && findThread(nav.currentThreadId)) {
     state.mode = "subthread";
     state.currentThreadId = nav.currentThreadId;
+    state.subthreadKnownTurnKeys = null;
+    state.subthreadContinuationArmedUntil = 0;
     return;
   }
 
   state.mode = "main";
   state.currentThreadId = null;
+  state.subthreadKnownTurnKeys = null;
+  state.subthreadContinuationArmedUntil = 0;
 }
 
 function scheduleSaveNavigationState() {
@@ -312,42 +319,22 @@ function allThreadMessageKeys() {
 }
 
 function deriveAssistantMessageKeys(thread, turns = readTurnInfos()) {
-  const rootIndex = turns.findIndex((info) => info.key === thread.rootUserMessageKey);
-  if (rootIndex < 0) {
-    return thread.assistantMessageKeys ?? [];
-  }
-
-  const assistantKeys = [];
-  for (const info of turns.slice(rootIndex + 1)) {
-    if (info.role === "user") {
-      break;
-    }
-    if (info.role === "assistant") {
-      assistantKeys.push(info.key);
-    }
-  }
-
-  return assistantKeys;
+  const messageKeys = new Set(deriveThreadMessageKeys(thread, turns));
+  return turns
+    .filter((info) => info.role === "assistant" && messageKeys.has(info.key))
+    .map((info) => info.key);
 }
 
 function effectiveMessageKeysForThread(thread, turns = readTurnInfos()) {
-  const keys = new Set(thread.messageKeys ?? []);
-
-  if (thread.rootUserMessageKey) {
-    keys.add(thread.rootUserMessageKey);
-  }
-
-  for (const key of deriveAssistantMessageKeys(thread, turns)) {
-    keys.add(key);
-  }
-
-  return keys;
+  return new Set(deriveThreadMessageKeys(thread, turns));
 }
 
 function repairThreadMessageMappings(turns = readTurnInfos()) {
   for (const thread of state.data.threads) {
-    const assistantMessageKeys = deriveAssistantMessageKeys(thread, turns);
-    const messageKeys = [thread.rootUserMessageKey, ...assistantMessageKeys].filter(Boolean);
+    const messageKeys = deriveThreadMessageKeys(thread, turns);
+    const assistantMessageKeys = turns
+      .filter((info) => info.role === "assistant" && messageKeys.includes(info.key))
+      .map((info) => info.key);
     const changed =
       messageKeys.join("|") !== (thread.messageKeys ?? []).join("|") ||
       assistantMessageKeys.join("|") !== (thread.assistantMessageKeys ?? []).join("|");
@@ -363,6 +350,67 @@ function repairThreadMessageMappings(turns = readTurnInfos()) {
       updatedAt: new Date().toISOString()
     }).catch((error) => console.error("[Yacht] failed to repair thread mapping", error));
   }
+}
+
+function deriveThreadMessageKeys(thread, turns = readTurnInfos()) {
+  const keys = new Set((thread.messageKeys ?? []).filter(Boolean));
+
+  if (thread.rootUserMessageKey) {
+    keys.add(thread.rootUserMessageKey);
+  }
+
+  for (let index = 0; index < turns.length; index += 1) {
+    const info = turns[index];
+    if (info.role !== "user" || !keys.has(info.key)) {
+      continue;
+    }
+
+    for (const reply of turns.slice(index + 1)) {
+      if (reply.role === "user") {
+        break;
+      }
+      if (reply.role === "assistant") {
+        keys.add(reply.key);
+      }
+    }
+  }
+
+  return orderMessageKeys([...keys], turns);
+}
+
+function orderMessageKeys(keys, turns = readTurnInfos()) {
+  const seen = new Set();
+  const uniqueKeys = keys.filter((key) => {
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+  const order = new Map(turns.map((info, index) => [info.key, index]));
+
+  return uniqueKeys.sort((left, right) => {
+    const leftIndex = order.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.get(right) ?? Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex || String(left).localeCompare(String(right));
+  });
+}
+
+function setSubthreadBaselineFromCurrentTurns(turns = readTurnInfos()) {
+  state.subthreadKnownTurnKeys = new Set(turns.map((info) => info.key));
+}
+
+function armSubthreadContinuation() {
+  if (state.mode !== "subthread" || !state.currentThreadId || state.pendingAsk) {
+    return;
+  }
+
+  state.subthreadContinuationArmedUntil = Date.now() + SUBTHREAD_CONTINUATION_ARM_MS;
+}
+
+function isComposerInteractionTarget(target) {
+  const element = nodeElement(target);
+  return Boolean(element?.closest(SELECTORS.composerContainer));
 }
 
 function setDiagnostic(message) {
@@ -391,7 +439,7 @@ function probeDom() {
   if (state.settings.enabled && isChatGptConversationUrl() && hasConversationMessages && !hasTurns) {
     state.failSafe = true;
     setDiagnostic(
-      "Ask Subthreads is in fail-safe mode because the ChatGPT message DOM was not recognized."
+      "YACHT is in fail-safe mode because the ChatGPT message DOM was not recognized."
     );
     return;
   }
@@ -433,7 +481,7 @@ function mountHeaderControls() {
     toggle.type = "button";
     toggle.className = "yacht-toggle";
     toggle.setAttribute("role", "switch");
-    toggle.setAttribute("aria-label", "Toggle Ask Subthreads");
+    toggle.setAttribute("aria-label", "Toggle YACHT");
     toggle.dataset.yachtControl = "toggle";
 
     const label = document.createElement("span");
@@ -529,6 +577,8 @@ async function setEnabled(enabled) {
   if (!enabled) {
     state.mode = "main";
     state.currentThreadId = null;
+    state.subthreadKnownTurnKeys = null;
+    state.subthreadContinuationArmedUntil = 0;
     scheduleSaveNavigationState();
   }
 
@@ -790,6 +840,108 @@ function schedulePendingReconcile() {
   window.setTimeout(reconcilePendingAsk, 2200);
 }
 
+function reconcileSubthreadContinuations() {
+  if (
+    !state.settings.enabled ||
+    state.failSafe ||
+    state.mode !== "subthread" ||
+    !state.currentThreadId
+  ) {
+    return;
+  }
+
+  const thread = findThread(state.currentThreadId);
+  if (!thread) {
+    return;
+  }
+
+  const turns = readTurnInfos();
+  if (!state.subthreadKnownTurnKeys) {
+    setSubthreadBaselineFromCurrentTurns(turns);
+    return;
+  }
+
+  if (state.pendingAsk || Date.now() > state.subthreadContinuationArmedUntil) {
+    return;
+  }
+
+  const currentKeys = effectiveMessageKeysForThread(thread, turns);
+  const lastCurrentIndex = turns.reduce(
+    (lastIndex, info, index) => (currentKeys.has(info.key) ? index : lastIndex),
+    -1
+  );
+
+  if (lastCurrentIndex < 0) {
+    return;
+  }
+
+  const otherThreadKeys = allOtherThreadMessageKeys(thread.threadId, turns);
+  const newKeys = [];
+
+  for (const info of turns.slice(lastCurrentIndex + 1)) {
+    const wasKnown = state.subthreadKnownTurnKeys.has(info.key);
+    if (wasKnown) {
+      continue;
+    }
+
+    if (otherThreadKeys.has(info.key) || (info.role !== "user" && info.role !== "assistant")) {
+      state.subthreadKnownTurnKeys.add(info.key);
+      continue;
+    }
+
+    if (newKeys.includes(info.key) || (thread.messageKeys ?? []).includes(info.key)) {
+      state.subthreadKnownTurnKeys.add(info.key);
+      continue;
+    }
+
+    newKeys.push(info.key);
+  }
+
+  if (newKeys.length === 0) {
+    return;
+  }
+
+  for (const key of newKeys) {
+    state.subthreadKnownTurnKeys.add(key);
+  }
+  state.subthreadContinuationArmedUntil = Date.now() + SUBTHREAD_CONTINUATION_ARM_MS;
+
+  const messageKeys = deriveThreadMessageKeys(
+    {
+      ...thread,
+      messageKeys: [...(thread.messageKeys ?? []), ...newKeys]
+    },
+    turns
+  );
+  const assistantMessageKeys = turns
+    .filter((info) => info.role === "assistant" && messageKeys.includes(info.key))
+    .map((info) => info.key);
+
+  thread.messageKeys = messageKeys;
+  thread.assistantMessageKeys = assistantMessageKeys;
+  thread.updatedAt = new Date().toISOString();
+
+  persistThread(thread)
+    .then(scheduleRender)
+    .catch((error) => console.error("[Yacht] failed to append subthread continuation", error));
+}
+
+function allOtherThreadMessageKeys(threadId, turns = readTurnInfos()) {
+  const keys = new Set();
+
+  for (const thread of state.data.threads) {
+    if (thread.threadId === threadId) {
+      continue;
+    }
+
+    for (const key of effectiveMessageKeysForThread(thread, turns)) {
+      keys.add(key);
+    }
+  }
+
+  return keys;
+}
+
 function isAskButtonLike(button) {
   const label = normalizeText(
     `${button.getAttribute("aria-label") ?? ""} ${button.title ?? ""} ${
@@ -803,6 +955,10 @@ function isAskButtonLike(button) {
 function handleDocumentPointerDown(event) {
   if (event.button !== 0) {
     return;
+  }
+
+  if (isComposerInteractionTarget(event.target)) {
+    armSubthreadContinuation();
   }
 
   const headerControl = headerControlFromEvent(event);
@@ -899,6 +1055,18 @@ function handleDocumentClick(event) {
   const clickedButton = target.closest("button");
   if (clickedButton && state.lastSelection && isAskButtonLike(clickedButton)) {
     createPendingAsk("ask-button-click");
+  }
+}
+
+function handleDocumentInput(event) {
+  if (isComposerInteractionTarget(event.target)) {
+    armSubthreadContinuation();
+  }
+}
+
+function handleDocumentKeyDown(event) {
+  if (isComposerInteractionTarget(event.target)) {
+    armSubthreadContinuation();
   }
 }
 
@@ -1021,6 +1189,8 @@ function navigateToThread(threadId) {
 
   state.mode = "subthread";
   state.currentThreadId = threadId;
+  setSubthreadBaselineFromCurrentTurns();
+  state.subthreadContinuationArmedUntil = 0;
   scheduleSaveNavigationState();
   scheduleRender();
   queueScrollToThread(threadId);
@@ -1042,9 +1212,13 @@ function returnToSource() {
   if (parent) {
     state.mode = "subthread";
     state.currentThreadId = parent.threadId;
+    setSubthreadBaselineFromCurrentTurns();
+    state.subthreadContinuationArmedUntil = 0;
   } else {
     state.mode = "main";
     state.currentThreadId = null;
+    state.subthreadKnownTurnKeys = null;
+    state.subthreadContinuationArmedUntil = 0;
   }
 
   scheduleSaveNavigationState();
@@ -1478,6 +1652,7 @@ function applySourceLinks() {
 function applyMessageVisibility() {
   const turns = readTurnInfos();
   repairThreadMessageMappings(turns);
+  reconcileSubthreadContinuations();
   const hiddenKeys = allThreadMessageKeys();
   const currentThread = findThread(state.currentThreadId);
   const currentKeys = currentThread
@@ -1505,29 +1680,7 @@ function clearMessageVisibility() {
     .forEach((turn) => turn.classList.remove("yacht-hidden-turn"));
 }
 
-function ensureComposerOverlay() {
-  const container = document.querySelector(SELECTORS.composerContainer);
-  if (!container) {
-    return;
-  }
-
-  if (getComputedStyle(container).position === "static") {
-    container.dataset.yachtOriginalPosition = container.style.position;
-    container.style.position = "relative";
-  }
-
-  if (container.querySelector(".yacht-composer-overlay")) {
-    return;
-  }
-
-  const overlay = document.createElement("div");
-  overlay.className = "yacht-composer-overlay";
-  overlay.innerHTML =
-    '<div class="yacht-composer-overlay__message">This subthread is read-only.<br>Return to the original text, or select text in the currently visible answer to start a new Ask ChatGPT.</div>';
-  container.append(overlay);
-}
-
-function removeComposerOverlay() {
+function removeLegacyComposerOverlay() {
   document.querySelectorAll(".yacht-composer-overlay").forEach((node) => node.remove());
   document.querySelectorAll("[data-yacht-original-position]").forEach((node) => {
     node.style.position = node.dataset.yachtOriginalPosition;
@@ -1535,24 +1688,10 @@ function removeComposerOverlay() {
   });
 }
 
-function applyComposerOverlay() {
-  if (
-    state.settings.enabled &&
-    !state.failSafe &&
-    state.mode === "subthread" &&
-    !state.repliedContentActive
-  ) {
-    ensureComposerOverlay();
-    return;
-  }
-
-  removeComposerOverlay();
-}
-
 function restoreOriginalRendering() {
   clearSourceLinks();
   clearMessageVisibility();
-  removeComposerOverlay();
+  removeLegacyComposerOverlay();
   closeThreadChooser();
 }
 
@@ -1591,7 +1730,7 @@ function render() {
 
     applySourceLinks();
     applyMessageVisibility();
-    applyComposerOverlay();
+    removeLegacyComposerOverlay();
   } finally {
     state.renderingTimer = setTimeout(() => {
       state.rendering = false;
@@ -1605,6 +1744,7 @@ function handleMutation() {
     state.deferredMutationTimer = setTimeout(() => {
       refreshRepliedContentState();
       reconcilePendingAsk();
+      reconcileSubthreadContinuations();
       scheduleRender();
     }, 90);
     return;
@@ -1612,6 +1752,7 @@ function handleMutation() {
 
   refreshRepliedContentState();
   reconcilePendingAsk();
+  reconcileSubthreadContinuations();
   scheduleRender();
 }
 
@@ -1636,6 +1777,8 @@ function observeRouteChanges() {
     state.conversationId = nextConversationId;
     state.pendingAsk = null;
     state.lastSelection = null;
+    state.subthreadKnownTurnKeys = null;
+    state.subthreadContinuationArmedUntil = 0;
     await loadConversationData();
     await loadNavigationState();
     scheduleRender();
@@ -1696,12 +1839,14 @@ async function initialize() {
     await loadNavigationState();
   } catch (error) {
     console.error("[Yacht] initialization failed", error);
-    setDiagnostic("Ask Subthreads could not initialize local extension storage.");
+    setDiagnostic("YACHT could not initialize local extension storage.");
   }
 
   document.addEventListener("selectionchange", () => {
     window.setTimeout(captureSelection, 60);
   });
+  document.addEventListener("input", handleDocumentInput, true);
+  document.addEventListener("keydown", handleDocumentKeyDown, true);
   document.addEventListener("pointerdown", handleDocumentPointerDown, true);
   document.addEventListener("click", handleDocumentClick, true);
   chrome.storage.onChanged.addListener(handleStorageChange);

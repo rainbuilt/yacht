@@ -528,7 +528,7 @@ async function main() {
       };
 
       return state.sourceLinks >= 1 &&
-        state.overlay &&
+        !state.overlay &&
         state.backHidden === false &&
         state.hidden[0]?.hidden === true
         ? state
@@ -541,7 +541,7 @@ async function main() {
         firstThread
       )}. Console: ${JSON.stringify(diagnostics.page.console)}`
     );
-    assert(firstThread.overlay, `Expected read-only composer overlay in Subthread Mode. State: ${JSON.stringify(firstThread)}`);
+    assert(!firstThread.overlay, `Expected composer to remain available in Subthread Mode. State: ${JSON.stringify(firstThread)}`);
     assert(firstThread.backHidden === false, `Expected header source button in Subthread Mode. State: ${JSON.stringify(firstThread)}`);
     assert(firstThread.hidden[0]?.hidden === true, `Expected original source turn hidden in Subthread Mode. State: ${JSON.stringify(firstThread)}`);
 
@@ -838,7 +838,7 @@ async function main() {
       previewUnderline: getComputedStyle(document.querySelector("#source-preview span"))
         .textDecorationLine
     }));
-    assert(popupState.title === "Yacht Navigator", "Expected popup title.");
+    assert(popupState.title === "YACHT Settings", "Expected popup title.");
     assert(popupState.hasExport && popupState.hasImport && popupState.hasReset, "Expected popup data controls.");
     assert(!popupState.hasBackgroundTint, "Expected popup Background tint setting to be removed.");
     assert(

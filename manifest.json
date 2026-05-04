@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Ask Subthread Navigator",
+  "name": "YACHT",
   "description": "Turns native Ask ChatGPT follow-up turns into source-linked local subthreads.",
   "version": "0.1.0",
   "action": {
-    "default_title": "Ask Subthreads",
+    "default_title": "YACHT",
     "default_popup": "src/popup/popup.html"
   },
   "background": {
