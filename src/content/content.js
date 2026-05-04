@@ -1577,6 +1577,106 @@ function pointInsideRects(clientX, clientY, rects, padding = 0) {
 }
 
 function wrapTextOffsets(root, startOffset, endOffset, anchor) {
+  const range = rangeFromTextOffsets(root, startOffset, endOffset);
+  if (!range || range.collapsed) {
+    return false;
+  }
+
+  if (wrapRangeAsSingleSourceLink(range, anchor)) {
+    return true;
+  }
+
+  return wrapTextOffsetsByTextNode(root, startOffset, endOffset, anchor);
+}
+
+function wrapRangeAsSingleSourceLink(range, anchor) {
+  if (!isSingleSourceLinkRangeSafe(range)) {
+    return false;
+  }
+
+  try {
+    const link = createSourceLink(anchor);
+    const contents = range.extractContents();
+    link.append(contents);
+    range.insertNode(link);
+    link.normalize();
+    return true;
+  } catch (error) {
+    console.debug("[Yacht] falling back to segmented source link", anchor.anchorId, error);
+    return false;
+  }
+}
+
+function isSingleSourceLinkRangeSafe(range) {
+  const fragment = range.cloneContents();
+
+  if (
+    fragment.querySelector(
+      [
+        "a",
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "summary",
+        "[contenteditable='true']",
+        ".yacht-header-controls",
+        ".yacht-popover",
+        ".yacht-diagnostic"
+      ].join(", ")
+    )
+  ) {
+    return false;
+  }
+
+  return !fragment.querySelector(
+    [
+      "address",
+      "article",
+      "aside",
+      "blockquote",
+      "details",
+      "dialog",
+      "div",
+      "dl",
+      "fieldset",
+      "figcaption",
+      "figure",
+      "footer",
+      "form",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "header",
+      "hr",
+      "li",
+      "main",
+      "nav",
+      "ol",
+      "p",
+      "pre",
+      "section",
+      "table",
+      "ul"
+    ].join(", ")
+  );
+}
+
+function createSourceLink(anchor) {
+  const link = document.createElement("a");
+  link.href = "#";
+  link.className = "yacht-source-link";
+  link.dataset.anchorId = anchor.anchorId;
+  link.dataset.yachtUnderline = String(Boolean(state.settings.sourceLinkStyle.underline));
+  link.title = "Open Ask ChatGPT subthread";
+  link.setAttribute("role", "link");
+  return link;
+}
+
+function wrapTextOffsetsByTextNode(root, startOffset, endOffset, anchor) {
   const nodes = textNodesUnder(root);
   let seen = 0;
   let wrapped = false;
@@ -1591,13 +1691,8 @@ function wrapTextOffsets(root, startOffset, endOffset, anchor) {
       range.setStart(node, segmentStart - seen);
       range.setEnd(node, segmentEnd - seen);
 
-      const link = document.createElement("a");
-      link.href = "#";
-      link.className = "yacht-source-link";
-      link.dataset.anchorId = anchor.anchorId;
-      link.dataset.yachtUnderline = String(Boolean(state.settings.sourceLinkStyle.underline));
-      link.title = "Open Ask ChatGPT subthread";
-      link.setAttribute("role", "link");
+      const link = createSourceLink(anchor);
+      link.dataset.yachtSegmented = "true";
 
       range.surroundContents(link);
       wrapped = true;

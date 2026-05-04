@@ -343,7 +343,7 @@ async function main() {
         <main id="thread">
           <section data-testid="conversation-turn-1" data-turn="assistant">
             <div data-message-author-role="assistant" data-message-id="assistant-source" data-turn-start-message="true">
-              <p id="source-text">A careful source paragraph needs a driven plan and a visible source link after Ask ChatGPT creates a subthread.</p>
+              <p id="source-text">A careful source paragraph needs a <span id="source-split-a">driven </span><span id="source-split-b">plan</span> and a visible source link after Ask ChatGPT creates a subthread.</p>
             </div>
           </section>
         </main>
@@ -477,11 +477,11 @@ async function main() {
     }
 
     await page.evaluate(() => {
-      const sourceText = document.querySelector("#source-text").firstChild;
-      const start = sourceText.nodeValue.indexOf("driven plan");
+      const sourceStart = document.querySelector("#source-split-a").firstChild;
+      const sourceEnd = document.querySelector("#source-split-b").firstChild;
       const range = document.createRange();
-      range.setStart(sourceText, start);
-      range.setEnd(sourceText, start + "driven plan".length);
+      range.setStart(sourceStart, 0);
+      range.setEnd(sourceEnd, sourceEnd.nodeValue.length);
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -527,7 +527,7 @@ async function main() {
         }))
       };
 
-      return state.sourceLinks >= 1 &&
+      return state.sourceLinks === 1 &&
         !state.overlay &&
         state.backHidden === false &&
         state.hidden[0]?.hidden === true
@@ -536,8 +536,8 @@ async function main() {
     });
 
     assert(
-      firstThread.sourceLinks >= 1,
-      `Expected a rendered source link after first Ask mapping. State: ${JSON.stringify(
+      firstThread.sourceLinks === 1,
+      `Expected one rendered source link after first Ask mapping. State: ${JSON.stringify(
         firstThread
       )}. Console: ${JSON.stringify(diagnostics.page.console)}`
     );
@@ -618,13 +618,16 @@ async function main() {
       });
 
       const source = document.querySelector('[data-message-id="assistant-source"]');
-      const textNode = [...source.childNodes]
-        .flatMap((node) => (node.nodeType === Node.TEXT_NODE ? [node] : [...node.childNodes]))
-        .find((node) => node.nodeValue?.includes("driven plan"));
-      const start = textNode.nodeValue.indexOf("driven plan");
+      const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+      }
+      const startNode = textNodes.find((node) => node.nodeValue?.includes("driven "));
+      const endNode = textNodes.find((node) => node.nodeValue?.includes("plan"));
       const range = document.createRange();
-      range.setStart(textNode, start);
-      range.setEnd(textNode, start + "driven plan".length);
+      range.setStart(startNode, startNode.nodeValue.indexOf("driven "));
+      range.setEnd(endNode, endNode.nodeValue.indexOf("plan") + "plan".length);
       const rect = range.getBoundingClientRect();
       const clientX = rect.left + rect.width / 2;
       const clientY = rect.top + rect.height / 2;
@@ -646,7 +649,7 @@ async function main() {
     await waitForEval(page, () => !document.querySelector('[data-testid="conversation-turn-1"]').classList.contains("yacht-hidden-turn"));
 
     await page.evaluate(() => {
-      const sourceText = document.querySelector(".yacht-source-link").firstChild;
+      const sourceText = document.querySelector(".yacht-source-link");
       const range = document.createRange();
       range.selectNodeContents(sourceText);
       const selection = window.getSelection();

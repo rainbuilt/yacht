@@ -146,6 +146,8 @@
 }
 
 .yacht-source-link {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   color: var(--yacht-link-color) !important;
   cursor: pointer;
   text-decoration-color: var(--yacht-link-color) !important;
