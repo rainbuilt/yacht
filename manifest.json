@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YACHT",
-  "description": "Turns native Ask ChatGPT follow-up turns into source-linked local subthreads.",
+  "description": "YACHT - Yet Another ChatGPT Helper Tool.",
   "version": "0.1.0",
   "action": {
     "default_title": "YACHT",

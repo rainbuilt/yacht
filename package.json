@@ -1,8 +1,8 @@
 {
-  "name": "yacht-chatgpt-extension",
+  "name": "yacht",
   "version": "0.1.0",
   "private": true,
-  "description": "Chrome extension development baseline for the ChatGPT website.",
+  "description": "YACHT - Yet Another ChatGPT Helper Tool",
   "type": "module",
   "scripts": {
     "validate": "node scripts/validate-extension.mjs"
