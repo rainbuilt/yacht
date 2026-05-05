@@ -25,6 +25,26 @@
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/content/app.js",
+        "src/content/constants.js",
+        "src/content/diagnostics.js",
+        "src/content/dom-readers.js",
+        "src/content/events.js",
+        "src/content/observers.js",
+        "src/content/persistence.js",
+        "src/content/selection.js",
+        "src/content/state.js",
+        "src/content/thread-model.js",
+        "src/content/utils.js"
+      ],
+      "matches": [
+        "https://chatgpt.com/*"
+      ]
+    }
+  ],
   "host_permissions": [
     "https://chatgpt.com/*"
   ],
