@@ -58,6 +58,9 @@ import {
   textNodesUnder
 } from "./utils.js";
 
+const SOURCE_LINK_DRAG_THRESHOLD_PX = 5;
+const SOURCE_LINK_CLICK_SUPPRESS_MS = 700;
+
 function isPendingAskOwnerActive(pending) {
   return (
     pending?.conversationId === state.conversationId &&
@@ -758,16 +761,24 @@ function handleDocumentPointerDown(event) {
     return;
   }
 
-  const anchor = sourceAnchorFromEvent(event);
-  if (!anchor) {
-    return;
-  }
+  const target = nodeElement(event.target);
+  const sourceLink = target?.closest?.(".yacht-source-link");
+  startSourcePointerGesture(sourceLink, event);
+}
 
-  event.preventDefault();
-  event.stopPropagation();
-  event.stopImmediatePropagation?.();
-  state.suppressSourceClickUntil = Date.now() + 600;
-  openAnchor(anchor.anchorId, event);
+function handleDocumentPointerMove(event) {
+  updateSourcePointerGesture(event);
+}
+
+function handleDocumentPointerUp(event) {
+  finishSourcePointerGesture(event);
+}
+
+function handleDocumentPointerCancel(event) {
+  const gesture = state.sourcePointerGesture;
+  if (gesture && isSourcePointerGestureEvent(gesture, event)) {
+    state.sourcePointerGesture = null;
+  }
 }
 
 function isPrimaryPointer(event) {
@@ -814,22 +825,28 @@ function handleDocumentClick(event) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
+    if (shouldSuppressSourceLinkClick(sourceLink.dataset.anchorId)) {
+      return;
+    }
     if (Date.now() < state.suppressSourceClickUntil) {
       return;
     }
-    openAnchor(sourceLink.dataset.anchorId, event);
+    openAnchors(sourceAnchorsFromEvent(event), event);
     return;
   }
 
-  const clickedAnchor = sourceAnchorFromEvent(event);
-  if (clickedAnchor) {
+  const clickedAnchors = sourceAnchorsFromEvent(event);
+  if (clickedAnchors.length > 0) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
+    if (shouldSuppressSourceLinkClick(clickedAnchors[0]?.anchorId)) {
+      return;
+    }
     if (Date.now() < state.suppressSourceClickUntil) {
       return;
     }
-    openAnchor(clickedAnchor.anchorId, event);
+    openAnchors(clickedAnchors, event);
     return;
   }
 
@@ -914,6 +931,126 @@ function headerControlFromEvent(event) {
   return target?.closest?.(".yacht-header-controls [data-yacht-control]") ?? null;
 }
 
+function startSourcePointerGesture(sourceLink, event) {
+  state.sourceLinkClickSuppression = null;
+  state.sourcePointerGesture = {
+    anchorId: sourceLink?.dataset?.anchorId ?? null,
+    element: sourceLink ?? null,
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    lastClientX: event.clientX,
+    lastClientY: event.clientY,
+    selectedText: normalizeText(window.getSelection()?.toString?.() ?? ""),
+    moved: false,
+    startedAt: Date.now()
+  };
+}
+
+function updateSourcePointerGesture(event) {
+  const gesture = state.sourcePointerGesture;
+  if (!gesture || !isSourcePointerGestureEvent(gesture, event)) {
+    return null;
+  }
+
+  gesture.lastClientX = event.clientX;
+  gesture.lastClientY = event.clientY;
+  gesture.moved =
+    gesture.moved ||
+    Math.hypot(event.clientX - gesture.startClientX, event.clientY - gesture.startClientY) >
+      SOURCE_LINK_DRAG_THRESHOLD_PX;
+
+  return gesture;
+}
+
+function finishSourcePointerGesture(event) {
+  const gesture = updateSourcePointerGesture(event);
+  if (!gesture) {
+    return;
+  }
+
+  if (shouldSuppressSourceClickAfterGesture(gesture, event)) {
+    state.sourceLinkClickSuppression = {
+      anchorId: gesture.anchorId,
+      until: Date.now() + SOURCE_LINK_CLICK_SUPPRESS_MS
+    };
+  }
+
+  state.sourcePointerGesture = null;
+}
+
+function isSourcePointerGestureEvent(gesture, event) {
+  return gesture.pointerId === event.pointerId;
+}
+
+function shouldSuppressSourceClickAfterGesture(gesture, event) {
+  if (sourceLinkSelectionChanged(gesture)) {
+    return true;
+  }
+
+  if (!gesture.moved) {
+    return false;
+  }
+
+  return Boolean(gesture.element) || findAnchorsAtPoint(event.clientX, event.clientY).length > 0;
+}
+
+function sourceLinkSelectionChanged(gesture) {
+  const selection = window.getSelection();
+  const selectedText = normalizeText(selection?.toString?.() ?? "");
+  const intersectsSource =
+    (gesture.element && selectionIntersectsElement(selection, gesture.element)) ||
+    selectionIntersectsSourceLink(selection);
+
+  return (
+    selectedText.length >= 2 &&
+    selectedText !== gesture.selectedText &&
+    intersectsSource
+  );
+}
+
+function shouldSuppressSourceLinkClick(anchorId) {
+  const suppression = state.sourceLinkClickSuppression;
+
+  if (
+    !suppression ||
+    Date.now() > suppression.until ||
+    (suppression.anchorId && anchorId && suppression.anchorId !== anchorId)
+  ) {
+    if (suppression && Date.now() > suppression.until) {
+      state.sourceLinkClickSuppression = null;
+    }
+    return false;
+  }
+
+  state.sourceLinkClickSuppression = null;
+  return true;
+}
+
+function selectionIntersectsElement(selection, element) {
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return false;
+  }
+
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    try {
+      if (selection.getRangeAt(index).intersectsNode(element)) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function selectionIntersectsSourceLink(selection) {
+  return [...document.querySelectorAll(".yacht-source-link")].some((link) =>
+    selectionIntersectsElement(selection, link)
+  );
+}
+
 function activateHeaderControl(control) {
   const controlName = control?.dataset?.yachtControl;
 
@@ -932,26 +1069,42 @@ function activateHeaderControl(control) {
   return false;
 }
 
-function sourceAnchorFromEvent(event) {
+function sourceAnchorsFromEvent(event) {
   if (!state.settings.enabled || state.failSafe) {
-    return null;
+    return [];
+  }
+
+  const anchors = Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+    ? findAnchorsAtPoint(event.clientX, event.clientY)
+    : [];
+  if (anchors.length > 0) {
+    return anchors;
   }
 
   const target = nodeElement(event.target);
   const sourceLink = target?.closest?.(".yacht-source-link");
   if (sourceLink) {
-    return findAnchor(sourceLink.dataset.anchorId);
+    const anchor = findAnchor(sourceLink.dataset.anchorId);
+    return anchor ? [anchor] : [];
   }
 
-  if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
-    return null;
-  }
-
-  return findAnchorAtPoint(event.clientX, event.clientY);
+  return [];
 }
 
-function openAnchor(anchorId, event) {
-  const threads = threadsForAnchor(anchorId);
+function openAnchors(anchors, event) {
+  const seenThreadIds = new Set();
+  const threads = [];
+
+  for (const anchor of anchors) {
+    for (const thread of threadsForAnchor(anchor.anchorId)) {
+      if (seenThreadIds.has(thread.threadId)) {
+        continue;
+      }
+
+      seenThreadIds.add(thread.threadId);
+      threads.push(thread);
+    }
+  }
 
   if (threads.length === 0) {
     return;
@@ -962,12 +1115,11 @@ function openAnchor(anchorId, event) {
     return;
   }
 
-  showThreadChooser(anchorId, event);
+  showThreadChooser(threads, event);
 }
 
-function showThreadChooser(anchorId, event) {
+function showThreadChooser(threads, event) {
   closeThreadChooser();
-  const threads = threadsForAnchor(anchorId);
   const popover = document.createElement("div");
   popover.className = "yacht-popover";
   popover.setAttribute("role", "menu");
@@ -1391,17 +1543,30 @@ function rangeFromTextOffsets(root, startOffset, endOffset) {
 }
 
 function findAnchorAtPoint(clientX, clientY) {
+  return findAnchorsAtPoint(clientX, clientY)[0] ?? null;
+}
+
+function findAnchorsAtPoint(clientX, clientY) {
   if (!state.settings.enabled || state.failSafe) {
-    return null;
+    return [];
   }
+
+  const anchorsById = new Map();
 
   for (const link of document.querySelectorAll(".yacht-source-link")) {
     if (pointInsideRects(clientX, clientY, link.getClientRects(), 3)) {
-      return findAnchor(link.dataset.anchorId);
+      const anchor = findAnchor(link.dataset.anchorId);
+      if (anchor) {
+        anchorsById.set(anchor.anchorId, anchor);
+      }
     }
   }
 
   for (const anchor of anchorsWithThreads()) {
+    if (anchorsById.has(anchor.anchorId)) {
+      continue;
+    }
+
     const restored = restoreAnchorRange(anchor);
     if (!restored) {
       continue;
@@ -1414,11 +1579,11 @@ function findAnchorAtPoint(clientX, clientY) {
     );
 
     if (range && pointInsideRects(clientX, clientY, range.getClientRects(), 3)) {
-      return anchor;
+      anchorsById.set(anchor.anchorId, anchor);
     }
   }
 
-  return null;
+  return [...anchorsById.values()];
 }
 
 function pointInsideRects(clientX, clientY, rects, padding = 0) {
@@ -1484,6 +1649,7 @@ function createSourceLink(anchor) {
   const link = document.createElement("a");
   link.href = "#";
   link.className = "yacht-source-link";
+  link.draggable = false;
   link.dataset.anchorId = anchor.anchorId;
   link.dataset.yachtUnderline = String(Boolean(state.settings.sourceLinkStyle.underline));
   link.title = "Open Ask ChatGPT subthread";
@@ -1789,6 +1955,9 @@ export async function initialize() {
     handleDocumentInput,
     handleDocumentKeyDown,
     handleDocumentPointerDown,
+    handleDocumentPointerMove,
+    handleDocumentPointerUp,
+    handleDocumentPointerCancel,
     handleDocumentClick
   });
   chrome.storage.onChanged.addListener(handleStorageChange);

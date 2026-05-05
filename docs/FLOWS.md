@@ -128,19 +128,19 @@ This document explains the main runtime flows in the current extension code. It 
    `render` calls `applySourceLinks` when the extension is enabled and not in fail-safe mode.
 
 2. Main functions involved
-   `applySourceLinks`, `anchorsWithThreads`, `sourceLinkSignature`, `hasRenderedSourceLinks`, `clearSourceLinks`, `restoreAnchorRange`, `findSourceMessage`, `findRangeByTextContext`, `wrapTextOffsets`, `createSourceLink`, `findAnchorAtPoint`
+   `applySourceLinks`, `anchorsWithThreads`, `sourceLinkSignature`, `hasRenderedSourceLinks`, `clearSourceLinks`, `restoreAnchorRange`, `findSourceMessage`, `findRangeByTextContext`, `wrapTextOffsets`, `createSourceLink`, `findAnchorAtPoint`, `findAnchorsAtPoint`, `sourceAnchorsFromEvent`, `openAnchors`
 
 3. State fields touched
-   `state.renderedSourceSignature`, `state.settings.sourceLinkStyle`, `state.data.anchors`, `state.data.threads`, `state.failSafe`
+   `state.renderedSourceSignature`, `state.settings.sourceLinkStyle`, `state.data.anchors`, `state.data.threads`, `state.failSafe`, `state.sourcePointerGesture`, `state.sourceLinkClickSuppression`
 
 4. Persistent data touched
    None. It reads anchors and threads already loaded into memory.
 
 5. DOM changes made
-   Existing `.yacht-source-link` wrappers are removed and rebuilt when needed. Matching selected text is wrapped in `<a class="yacht-source-link">` elements with `data-anchor-id` and underline styling data.
+   Existing `.yacht-source-link` wrappers are removed and rebuilt when needed. Matching selected text is wrapped in non-draggable `<a class="yacht-source-link">` elements with `data-anchor-id` and underline styling data. Source-link CSS keeps the wrapper text selectable and prevents native link dragging from taking over a follow-up selection gesture.
 
 6. Failure or fallback behavior
-   If disabled, fail-safe, or no anchors with threads exist, source links are cleared. If exact offsets no longer match, the code tries contextual text matching. Low-confidence or failed restores are skipped and logged.
+   If disabled, fail-safe, or no anchors with threads exist, source links are cleared. If exact offsets no longer match, the code tries contextual text matching. Low-confidence or failed restores are skipped and logged. Rendered source links and restored source ranges open from the click path so users can still start a text selection on or near linked source text. Pointer-down, move, up, and cancel events are tracked as one source-pointer gesture. The later click is ignored when the pointer moved into a source range or the selection intersects a source link. When a click lands inside overlapping anchors, YACHT collects every matching anchor and opens a chooser for all related subthreads.
 
 ## 8. Main Mode Message Visibility
 

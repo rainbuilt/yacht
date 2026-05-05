@@ -37,7 +37,9 @@ export const state = {
   suppressAskButtonCaptureUntil: 0,
   suppressRepliedContentAskUntil: 0,
   suppressHeaderClickUntil: 0,
-  suppressSourceClickUntil: 0
+  suppressSourceClickUntil: 0,
+  sourcePointerGesture: null,
+  sourceLinkClickSuppression: null
 };
 
 export function resetThreadNavigationState() {

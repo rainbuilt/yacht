@@ -11,6 +11,11 @@ declared in `manifest.json`.
 
 - Added this changelog to track future project changes.
 
+### Fixed
+
+- Kept rendered source-link text selectable for additional Ask ChatGPT follow-ups by distinguishing drag selection from direct source-link clicks and disabling native link dragging.
+- Fixed source navigation so drag gestures that start outside a source link and end inside it do not open a subthread, and overlapping anchors show one chooser with every related subthread.
+
 ## [0.1.0]
 
 ### Added

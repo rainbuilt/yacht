@@ -84,11 +84,11 @@ Important internal functions still inside this file include:
 
 - Startup and lifecycle: `render()`, `scheduleRender()`, `scheduleRenderPasses()`, `processMutation()`, `handleMutation()`, `observeRouteChanges()`, `handleStorageChange()`
 - Header controls: `mountHeaderControls()`, `placeHeaderControls()`, `updateHeaderControls()`, `findHeaderMountPoint()`, `activateHeaderControl()`
-- Source links: `applySourceLinks()`, `clearSourceLinks()`, `restoreAnchorRange()`, `findRangeByTextContext()`, `rangeFromTextOffsets()`, `wrapTextOffsets()`, `wrapRangeAsSingleSourceLink()`, `wrapTextOffsetsByTextNode()`, `createSourceLink()`, `findAnchorAtPoint()`
+- Source links: `applySourceLinks()`, `clearSourceLinks()`, `restoreAnchorRange()`, `findRangeByTextContext()`, `rangeFromTextOffsets()`, `wrapTextOffsets()`, `wrapRangeAsSingleSourceLink()`, `wrapTextOffsetsByTextNode()`, `createSourceLink()`, `findAnchorAtPoint()`, `findAnchorsAtPoint()`, `openAnchors()`
 - Thread visibility and navigation: `applyMessageVisibility()`, `clearMessageVisibility()`, `navigateToThread()`, `returnToSource()`, `queueScrollToThread()`, `queueScrollToAnchor()`
 - Pending Ask flow: `createPendingAsk()`, `reconcilePendingAsk()`, `schedulePendingReconcile()`, `persistAnchor()`, `persistThread()`
 - Auto context and composer behavior: `shouldAttachAutoContext()`, `ensureAutoContextForCurrentThread()`, `handleSendWithAutoContext()`, `hasActiveRepliedContent()`, `focusComposer()`
-- Event handlers passed to `events.js`: `handleDocumentPointerDown()`, `handleDocumentClick()`, `handleDocumentInput()`, `handleDocumentKeyDown()`
+- Event handlers passed to `events.js`: `handleDocumentPointerDown()`, `handleDocumentPointerMove()`, `handleDocumentPointerUp()`, `handleDocumentPointerCancel()`, `handleDocumentClick()`, `handleDocumentInput()`, `handleDocumentKeyDown()`
 - Diagnostics and cleanup helpers: `restoreOriginalRendering()`, `removeLegacyComposerOverlay()`, `refreshRepliedContentState()`
 
 ### When to edit this file
@@ -394,6 +394,9 @@ It registers:
 - `input`
 - `keydown`
 - `pointerdown`
+- `pointermove`
+- `pointerup`
+- `pointercancel`
 - `click`
 
 ### When to edit this file

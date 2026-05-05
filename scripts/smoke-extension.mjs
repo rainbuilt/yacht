@@ -610,6 +610,307 @@ async function main() {
     assert(returnedMain.userHidden === true, "Expected subthread user turn hidden in Main Mode.");
     assert(returnedMain.sourceLinkText === "driven plan", "Expected exact source link text.");
 
+    const sourceLinkPointerDown = await page.evaluate(() => {
+      const link = document.querySelector(".yacht-source-link");
+      const rect = link.getBoundingClientRect();
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      const event = new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        clientY,
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse"
+      });
+      const dispatched = link.dispatchEvent(event);
+
+      return {
+        defaultPrevented: event.defaultPrevented,
+        dispatched,
+        draggable: link.getAttribute("draggable"),
+        userSelect: getComputedStyle(link).userSelect,
+        backHidden: document.querySelector('[data-yacht-control="back"]')?.hidden
+      };
+    });
+    assert(
+      sourceLinkPointerDown.defaultPrevented === false &&
+        sourceLinkPointerDown.dispatched === true &&
+        sourceLinkPointerDown.draggable === "false" &&
+        sourceLinkPointerDown.userSelect === "text" &&
+        sourceLinkPointerDown.backHidden === true,
+      `Expected source-link pointerdown to remain selectable without navigation. State: ${JSON.stringify(
+        sourceLinkPointerDown
+      )}`
+    );
+
+    const sourceLinkDragClick = await page.evaluate(() => {
+      const link = document.querySelector(".yacht-source-link");
+      const rect = link.getBoundingClientRect();
+      const startX = rect.left + 2;
+      const endX = rect.right - 2;
+      const clientY = rect.top + rect.height / 2;
+      link.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          clientX: startX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      link.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+
+      const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+      }
+
+      const range = document.createRange();
+      range.setStart(textNodes.at(0), 0);
+      range.setEnd(textNodes.at(-1), textNodes.at(-1).nodeValue.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+
+      link.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+
+      const click = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: endX,
+        clientY,
+        button: 0
+      });
+      const dispatched = link.dispatchEvent(click);
+      const selectedText = selection.toString();
+      selection.removeAllRanges();
+
+      return {
+        defaultPrevented: click.defaultPrevented,
+        dispatched,
+        selectedText,
+        backHidden: document.querySelector('[data-yacht-control="back"]')?.hidden
+      };
+    });
+    assert(
+      sourceLinkDragClick.defaultPrevented === true &&
+        sourceLinkDragClick.dispatched === false &&
+        sourceLinkDragClick.selectedText === "driven plan" &&
+        sourceLinkDragClick.backHidden === true,
+      `Expected source-link drag selection click to be suppressed. State: ${JSON.stringify(
+        sourceLinkDragClick
+      )}`
+    );
+
+    const sourceLinkPointDragClick = await page.evaluate(() => {
+      const link = document.querySelector(".yacht-source-link");
+      const source = document.querySelector('[data-message-id="assistant-source"]');
+      const rect = link.getBoundingClientRect();
+      const startX = rect.left + 2;
+      const endX = rect.right - 2;
+      const clientY = rect.top + rect.height / 2;
+      link.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          clientX: startX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+
+      const click = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: endX,
+        clientY,
+        button: 0
+      });
+      const dispatched = source.dispatchEvent(click);
+
+      return {
+        defaultPrevented: click.defaultPrevented,
+        dispatched,
+        backHidden: document.querySelector('[data-yacht-control="back"]')?.hidden
+      };
+    });
+    assert(
+      sourceLinkPointDragClick.defaultPrevented === true &&
+        sourceLinkPointDragClick.dispatched === false &&
+        sourceLinkPointDragClick.backHidden === true,
+      `Expected point-based click after source-link drag to be suppressed. State: ${JSON.stringify(
+        sourceLinkPointDragClick
+      )}`
+    );
+
+    const outsideToSourceDragClick = await page.evaluate(() => {
+      const link = document.querySelector(".yacht-source-link");
+      const source = document.querySelector('[data-message-id="assistant-source"]');
+      const linkRect = link.getBoundingClientRect();
+      const sourceRect = source.getBoundingClientRect();
+      const startX = Math.max(sourceRect.left + 2, linkRect.left - 16);
+      const endX = linkRect.left + linkRect.width / 2;
+      const clientY = linkRect.top + linkRect.height / 2;
+      const startTarget = document.elementFromPoint(startX, clientY) ?? source;
+      startTarget.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          clientX: startX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      document.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          clientX: endX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+
+      const click = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: endX,
+        clientY,
+        button: 0
+      });
+      const dispatched = link.dispatchEvent(click);
+
+      return {
+        defaultPrevented: click.defaultPrevented,
+        dispatched,
+        backHidden: document.querySelector('[data-yacht-control="back"]')?.hidden
+      };
+    });
+    assert(
+      outsideToSourceDragClick.defaultPrevented === true &&
+        outsideToSourceDragClick.dispatched === false &&
+        outsideToSourceDragClick.backHidden === true,
+      `Expected outside-to-source drag click to be suppressed. State: ${JSON.stringify(
+        outsideToSourceDragClick
+      )}`
+    );
+
+    const sourceLinkPointerClick = await page.evaluate(() => {
+      const link = document.querySelector(".yacht-source-link");
+      const rect = link.getBoundingClientRect();
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      link.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      link.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      const click = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        clientY,
+        button: 0
+      });
+      const dispatched = link.dispatchEvent(click);
+
+      return {
+        defaultPrevented: click.defaultPrevented,
+        dispatched
+      };
+    });
+    assert(
+      sourceLinkPointerClick.defaultPrevented === true &&
+        sourceLinkPointerClick.dispatched === false,
+      `Expected source-link pointer click to activate navigation. State: ${JSON.stringify(
+        sourceLinkPointerClick
+      )}`
+    );
+    await waitForEval(page, () => document.querySelector('[data-yacht-control="back"]')?.hidden === false);
+    await page.evaluate(() => document.querySelector('[data-yacht-control="back"]').click());
+    await waitForEval(page, () => !document.querySelector('[data-testid="conversation-turn-1"]').classList.contains("yacht-hidden-turn"));
+
     await page.evaluate(() => {
       document.querySelectorAll(".yacht-source-link").forEach((wrapper) => {
         const parent = wrapper.parentNode;
@@ -643,6 +944,26 @@ async function main() {
           pointerType: "mouse"
         })
       );
+      target.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0,
+          pointerId: 1,
+          pointerType: "mouse"
+        })
+      );
+      target.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0
+        })
+      );
     });
     await waitForEval(page, () => document.querySelector('[data-yacht-control="back"]')?.hidden === false);
     await page.evaluate(() => document.querySelector('[data-yacht-control="back"]').click());
@@ -651,7 +972,13 @@ async function main() {
     await page.evaluate(() => {
       const sourceText = document.querySelector(".yacht-source-link");
       const range = document.createRange();
-      range.selectNodeContents(sourceText);
+      const walker = document.createTreeWalker(sourceText, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+      }
+      range.setStart(textNodes.at(0), 0);
+      range.setEnd(textNodes.at(-1), textNodes.at(-1).nodeValue.length);
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -689,16 +1016,97 @@ async function main() {
     await page.evaluate(() => document.querySelector('[data-yacht-control="back"]').click());
     await waitForEval(page, () => !document.querySelector('[data-testid="conversation-turn-1"]').classList.contains("yacht-hidden-turn"));
 
-    await page.evaluate(() => document.querySelector(".yacht-source-link").click());
+    await page.evaluate(() => {
+      const source = document.querySelector('[data-message-id="assistant-source"]');
+      const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+      }
+      const plan = textNodes.find((node) => node.nodeValue?.includes("plan"));
+      const afterPlan = textNodes.find((node) => node.nodeValue?.includes(" and a visible"));
+      const range = document.createRange();
+      range.setStart(plan, plan.nodeValue.indexOf("plan"));
+      range.setEnd(afterPlan, afterPlan.nodeValue.indexOf(" visible") + " visible".length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    await sleep(180);
+
+    await page.evaluate(() => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Ask ChatGPT";
+      document.body.append(button);
+      button.click();
+      button.remove();
+      document.querySelector("#thread").insertAdjacentHTML(
+        "beforeend",
+        `<section data-testid="conversation-turn-6" data-turn="user">
+          <div data-message-author-role="user" data-message-id="user-root-3">
+            <button type="button"><p class="line-clamp-3">plan and a visible</p></button>
+            <div class="user-message-bubble-color">How does the visible source relate?</div>
+          </div>
+        </section>
+        <section data-testid="conversation-turn-7" data-turn="assistant">
+          <div data-message-author-role="assistant" data-message-id="assistant-root-3" data-turn-start-message="true">
+            <p>The overlapped source should still offer every related subthread.</p>
+          </div>
+        </section>`
+      );
+    });
+
+    await waitForEval(page, () => {
+      const back = document.querySelector('[data-yacht-control="back"]');
+      return back && back.hidden === false;
+    });
+    await page.evaluate(() => document.querySelector('[data-yacht-control="back"]').click());
+    await waitForEval(page, () => !document.querySelector('[data-testid="conversation-turn-1"]').classList.contains("yacht-hidden-turn"));
+
+    await page.evaluate(() => {
+      const source = document.querySelector('[data-message-id="assistant-source"]');
+      const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+      const planNode = (() => {
+        while (walker.nextNode()) {
+          if (walker.currentNode.nodeValue?.includes("plan")) {
+            return walker.currentNode;
+          }
+        }
+        return null;
+      })();
+      const range = document.createRange();
+      range.setStart(planNode, planNode.nodeValue.indexOf("plan"));
+      range.setEnd(planNode, planNode.nodeValue.indexOf("plan") + "plan".length);
+      const rect = range.getBoundingClientRect();
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      const target = document.elementFromPoint(clientX, clientY) ?? source;
+      target.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0
+        })
+      );
+    });
     const chooser = await waitForEval(page, () => {
       const state = {
         items: document.querySelectorAll(".yacht-popover__item").length
       };
-      return state.items === 2 ? state : false;
+      return state.items === 3 ? state : false;
     });
-    assert(chooser.items === 2, "Expected chooser with two threads for one source anchor.");
+    assert(chooser.items === 3, "Expected chooser with three threads across overlapping source anchors.");
 
-    await page.evaluate(() => document.querySelector(".yacht-popover__item").click());
+    await page.evaluate(() => {
+      const item = [...document.querySelectorAll(".yacht-popover__item")].find((button) =>
+        button.textContent.includes("What does the driven plan imply?")
+      );
+      item.click();
+    });
     await waitForEval(page, () => document.querySelector('[data-yacht-control="back"]')?.hidden === false);
 
     await page.evaluate(() => {
@@ -723,13 +1131,13 @@ async function main() {
       button.remove();
       document.querySelector("#thread").insertAdjacentHTML(
         "beforeend",
-        `<section data-testid="conversation-turn-6" data-turn="user">
+        `<section data-testid="conversation-turn-8" data-turn="user">
           <div data-message-author-role="user" data-message-id="user-child-1">
             <button type="button"><p class="line-clamp-3">verifiable</p></button>
             <div class="user-message-bubble-color">What should be verified?</div>
           </div>
         </section>
-        <section data-testid="conversation-turn-7" data-turn="assistant">
+        <section data-testid="conversation-turn-9" data-turn="assistant">
           <div data-message-author-role="assistant" data-message-id="assistant-child-1" data-turn-start-message="true">
             <p>The extension should verify navigation, hiding, source links, and storage restore.</p>
           </div>
@@ -738,7 +1146,7 @@ async function main() {
     });
 
     await waitForEval(page, () => {
-      const childUser = document.querySelector('[data-testid="conversation-turn-6"]');
+      const childUser = document.querySelector('[data-testid="conversation-turn-8"]');
       const parentUser = document.querySelector('[data-testid="conversation-turn-2"]');
       const back = document.querySelector('[data-yacht-control="back"]');
       return (
@@ -762,7 +1170,7 @@ async function main() {
             .querySelector('[data-testid="conversation-turn-4"]')
             .classList.contains("yacht-hidden-turn"),
           childHidden: document
-            .querySelector('[data-testid="conversation-turn-6"]')
+            .querySelector('[data-testid="conversation-turn-8"]')
             .classList.contains("yacht-hidden-turn"),
           sourceVisible: !document
             .querySelector('[data-testid="conversation-turn-1"]')

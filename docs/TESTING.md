@@ -110,9 +110,12 @@ Use this checklist after automated checks pass, especially when touching content
 - Click the return-to-source/header back control.
 - Confirm the original source turn becomes visible again.
 - Confirm the generated source link appears around the selected text.
+- Confirm drag-selecting the source link text can start and finish without opening the subthread.
+- Confirm drag-selecting from outside a source link and releasing inside it does not open the subthread.
 - Click the source link.
 - Confirm it opens the related subthread.
 - If one source link has multiple related subthreads, confirm the chooser appears and opens the selected thread.
+- If different source links overlap, click the overlapped text and confirm the chooser includes subthreads for every overlapping anchor.
 - Turn the extension off from the popup.
 - Confirm extension off mode disables YACHT behavior on the ChatGPT page.
 - Open the popup and verify settings render correctly.

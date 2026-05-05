@@ -271,8 +271,12 @@ The selected text is styled as a source link, but clicking it does not open a su
 
 - The link has an `anchorId` that has no matching thread.
 - Click or pointer events are intercepted before YACHT handles them.
-- `sourceAnchorFromEvent()` cannot resolve the clicked anchor.
+- `sourceAnchorsFromEvent()` cannot resolve the clicked anchor.
 - A previous suppress timer is active briefly after pointer handling.
+- Pointer-down on an actual `.yacht-source-link` should not open the subthread. Direct source-link navigation is handled by click so the linked source text remains selectable for another Ask ChatGPT question.
+- Dragging across an actual `.yacht-source-link` should suppress the follow-up click event when the pointer moved or the selected link text changed.
+- Source links should have `draggable="false"` and `user-select: text` so browser-native link dragging does not block text selection.
+- Clicks in overlapping source-link ranges should collect all anchors under the point and show all related subthreads in the chooser.
 
 ### Files to inspect
 
@@ -287,6 +291,9 @@ The selected text is styled as a source link, but clicking it does not open a su
 - Inspect the clicked element and confirm it has `.yacht-source-link` and `data-anchor-id`.
 - Check whether `threadsForAnchor(anchorId)` would have at least one thread in current state.
 - Try clicking after a short pause to rule out suppression timing.
+- Try drag-selecting from outside a source link and releasing inside it. If the subthread opens after mouseup, inspect `finishSourcePointerGesture()` and `shouldSuppressSourceLinkClick()`.
+- For overlapping links, inspect `findAnchorsAtPoint()` and confirm it returns every anchor whose rendered link or restored range contains the click point.
+- Inspect the source link and computed style. It should have `draggable="false"` and `user-select: text`.
 - Watch the console for runtime or persistence errors.
 
 ### Common fixes
