@@ -2,7 +2,7 @@ export const SETTINGS_KEY = "yacht.settings";
 export const NAV_KEY_PREFIX = "yacht.nav.";
 export const SCHEMA_VERSION = 1;
 export const HEADER_MOUNT_DELAY_MS = 2500;
-export const POST_RENDER_SCROLL_DELAYS_MS = [140];//[140, 280, 520, 900];
+export const POST_RENDER_SCROLL_DELAYS_MS = [140, 280, 520, 900];
 export const SUBTHREAD_CONTINUATION_ARM_MS = 5 * 60 * 1000;
 export const AUTO_CONTEXT_SUPPRESS_MS = 10000;
 export const AUTO_CONTEXT_WAIT_MS = 1600;
@@ -20,9 +20,9 @@ export const SELECTORS = {
   message: "[data-message-author-role]",
   assistantMessage: '[data-message-author-role="assistant"]',
   userReferenceButton:
-    '[data-message-author-role="user"] button:has(p.line-clamp-3)',
-  repliedContent: 'button[aria-label="More about replied content"]',
-  removeRepliedContent: 'button[aria-label="Remove"]',
+    '[data-message-author-role="user"] :is(button, [role="button"]):has(p.line-clamp-3)',
+  repliedContent: ':is(button, [role="button"])[aria-label="More about replied content"]',
+  removeRepliedContent: ':is(button, [role="button"])[aria-label="Remove"]',
   composerContainer: "#thread-bottom-container, #thread-bottom",
   sendButton: 'button[data-testid="send-button"], button[aria-label="Send prompt"]'
 };

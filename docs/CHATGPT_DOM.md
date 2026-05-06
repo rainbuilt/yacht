@@ -26,9 +26,9 @@ These selector names come from `SELECTORS` in `src/content/constants.js`.
 | `turn` | `section[data-testid^="conversation-turn-"][data-turn]` | Finds each conversation turn. This is the most important selector for reading threads. |
 | `message` | `[data-message-author-role]` | Finds any user or assistant message element. |
 | `assistantMessage` | `[data-message-author-role="assistant"]` | Identifies assistant messages. Selection capture also uses this role directly. |
-| `userReferenceButton` | `[data-message-author-role="user"] button:has(p.line-clamp-3)` | Detects a user turn that contains ChatGPT's replied-content reference. |
-| `repliedContent` | `button[aria-label="More about replied content"]` | Detects active replied content in the composer. |
-| `removeRepliedContent` | `button[aria-label="Remove"]` | Clears pending Ask tracking when the user removes replied content. |
+| `userReferenceButton` | `[data-message-author-role="user"] :is(button, [role="button"]):has(p.line-clamp-3)` | Detects a user turn that contains ChatGPT's replied-content reference. |
+| `repliedContent` | `:is(button, [role="button"])[aria-label="More about replied content"]` | Detects active replied content in the composer. |
+| `removeRepliedContent` | `:is(button, [role="button"])[aria-label="Remove"]` | Clears pending Ask tracking when the user removes replied content. |
 | `composerContainer` | `#thread-bottom-container, #thread-bottom` | Finds composer interactions, focus target, and composer-scoped replied content. |
 | `sendButton` | `button[data-testid="send-button"], button[aria-label="Send prompt"]` | Detects send clicks and Enter-to-send auto-context behavior. |
 
@@ -123,11 +123,11 @@ If header controls disappear but messages still work, inspect `header`, `headerA
 
 ## 7. Native Ask ChatGPT Detection
 
-YACHT does not use a fixed selector for the native Ask ChatGPT floating button. It scans visible buttons with `findNativeAskButton()` in `src/content/app.js`.
+YACHT does not use a fixed selector for the native Ask ChatGPT floating control. It scans visible `button`, `[role="button"]`, and `[role="menuitem"]` controls with `findNativeAskButton()` in `src/content/app.js`.
 
 `findNativeAskButton()`:
 
-1. Reads all `button` elements.
+1. Reads all `button`, `[role="button"]`, and `[role="menuitem"]` elements.
 2. Ignores buttons inside `.yacht-header-controls` and `.yacht-popover`.
 3. Keeps only visible buttons.
 4. Uses `isAskButtonLike()`.
@@ -147,9 +147,9 @@ YACHT uses replied content to connect a selected assistant passage to a new user
 
 After a user sends an Ask prompt, `reconcilePendingAsk()` looks for new user turns and calls `isAskUserTurnForAnchor()`.
 
-`isAskUserTurnForAnchor()` uses `getUserReferenceTexts()`, which finds buttons containing `p.line-clamp-3` inside user messages. It compares that replied-content text with the saved selected text after normalization.
+`isAskUserTurnForAnchor()` uses `getUserReferenceTexts()`, which finds `button` or `[role="button"]` controls containing `p.line-clamp-3` inside user messages. It compares that replied-content text with the saved selected text after normalization.
 
-The related selector in `SELECTORS` is `userReferenceButton`, currently `[data-message-author-role="user"] button:has(p.line-clamp-3)`. It is also used for returning from a subthread when the user clicks the reference button.
+The related selector in `SELECTORS` is `userReferenceButton`, currently `[data-message-author-role="user"] :is(button, [role="button"]):has(p.line-clamp-3)`. It is also used for returning from a subthread when the user clicks the reference button.
 
 ## 9. Fail-safe Behavior
 
@@ -178,11 +178,11 @@ ChatGPT DOM changes can trigger fail-safe mode because YACHT depends on the rela
 | No turns are hidden when entering a subthread. | `turn` or `message` | `src/content/constants.js`, `src/content/app.js`, `src/content/dom-readers.js` | Check that each visible ChatGPT turn has a matched turn wrapper and a child with `data-message-author-role`. |
 | Source links are not restored on selected assistant text. | `message`, `assistantMessage`, `TEXT_NODE_IGNORE_SELECTOR`, `UNSAFE_SOURCE_LINK_SELECTOR`, `BLOCK_SOURCE_LINK_SELECTOR` | `src/content/constants.js`, `src/content/app.js`, `src/content/utils.js` | Inspect the assistant message and verify its text is included by `textFromNodes()` and not inside ignored UI. |
 | Selecting assistant text does nothing. | `assistantMessage` | `src/content/selection.js`, `src/content/constants.js` | Select text, then check whether the selection start and end are inside an element matching `[data-message-author-role="assistant"]`. |
-| Native Ask ChatGPT click does not create a subthread. | Native Ask button label or replied-content selectors | `src/content/app.js`, `src/content/dom-readers.js` | Inspect the native Ask control and verify it is a visible `button` whose label, title, or text includes `Ask ChatGPT` or equals `Ask`. |
-| Ask replied content appears in the composer but YACHT does not track it. | `repliedContent` or `composerContainer` fallback | `src/content/constants.js`, `src/content/app.js` | Check whether `button[aria-label="More about replied content"]` or the composer-scoped `:has(p.line-clamp-3)` fallback matches. |
-| Clicking a user replied-content reference no longer returns to the source. | `userReferenceButton` | `src/content/constants.js`, `src/content/app.js` | Inspect the user turn and confirm the reference is still a button containing `p.line-clamp-3`. |
+| Native Ask ChatGPT click does not create a subthread. | Native Ask control label or replied-content selectors | `src/content/app.js`, `src/content/dom-readers.js` | Inspect the native Ask control and verify it is visible and is a `button`, `[role="button"]`, or `[role="menuitem"]` whose label, title, or text includes `Ask ChatGPT` or equals `Ask`. |
+| Ask replied content appears in the composer but YACHT does not track it. | `repliedContent` or `composerContainer` fallback | `src/content/constants.js`, `src/content/app.js` | Check whether `:is(button, [role="button"])[aria-label="More about replied content"]` or the composer-scoped `:has(p.line-clamp-3)` fallback matches. |
+| Clicking a user replied-content reference no longer returns to the source. | `userReferenceButton` | `src/content/constants.js`, `src/content/app.js` | Inspect the user turn and confirm the reference is still a `button` or `[role="button"]` containing `p.line-clamp-3`. |
 | YACHT header toggle or back button is missing. | `header`, `headerActions`, `headerActionsFallback`, `shareButton`, `optionsButton` | `src/content/constants.js`, `src/content/app.js` | Check which header action container exists and whether the share/options buttons are still visible. |
-| Auto-context send does not work. | `composerContainer`, `sendButton`, `TEXT_BLOCK_SELECTOR`, `AUTO_CONTEXT_IGNORE_SELECTOR` | `src/content/constants.js`, `src/content/app.js` | Verify the composer container and send button match, then inspect the last assistant answer text blocks. |
+| Auto-context send does not work. | `composerContainer`, `sendButton`, `TEXT_BLOCK_SELECTOR`, `AUTO_CONTEXT_IGNORE_SELECTOR`, native Ask control events | `src/content/constants.js`, `src/content/app.js` | Verify the composer container and send button match, confirm composer-scoped fallback queries are run inside each composer container, inspect the last assistant answer text blocks, and confirm the native Ask control appears after a selected answer receives pointerup/mouseup. |
 | Pending Ask state clears after sending a normal prompt. | `userReferenceButton` or replied-content text shape | `src/content/dom-readers.js`, `src/content/app.js` | Check whether the new user turn contains reference text that matches the original selected text. |
 
 ## 11. Step-by-Step Selector Update Process
@@ -317,7 +317,7 @@ Run these checks in browser DevTools on a live ChatGPT conversation.
 10. Native Ask button check:
 
     ```js
-    [...document.querySelectorAll('button')].filter((button) => /ask chatgpt|^ask$/i.test(`${button.ariaLabel ?? ''} ${button.title ?? ''} ${button.textContent ?? ''}`.replace(/\s+/g, ' ').trim()))
+    [...document.querySelectorAll('button, [role="button"], [role="menuitem"]')].filter((control) => /ask chatgpt|^ask$/i.test(`${control.ariaLabel ?? ''} ${control.title ?? ''} ${control.textContent ?? ''}`.replace(/\s+/g, ' ').trim()))
     ```
 
     This should include ChatGPT's native Ask control after selecting assistant text.

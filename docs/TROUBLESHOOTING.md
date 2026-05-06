@@ -432,6 +432,42 @@ Selecting assistant text and clicking Ask ChatGPT creates a ChatGPT reply, but Y
 - Do not remove the pending ask timeout/grace behavior without understanding false positives.
 - Do not allow selections that cross multiple assistant messages unless thread anchoring is redesigned.
 
+## 10A. Auto Context Send Does Not Attach Context
+
+### Symptom
+
+Sending a follow-up from a subthread that is not at the latest conversation tail sends normally, but ChatGPT does not receive the last assistant answer as replied context.
+
+### Likely causes
+
+- `shouldAttachAutoContext()` returns false because the current thread is already at the conversation tail, fail-safe is active, or replied content is already present.
+- The composer or send button no longer matches `SELECTORS.composerContainer` or `SELECTORS.sendButton`.
+- Replied-content fallback detection incorrectly treats the composer container itself as replied content after concatenating a descendant selector onto the comma-separated composer selector.
+- ChatGPT opens the native Ask control from pointer events, but YACHT only simulated mouse events.
+- The native Ask control is no longer a visible `button`, `[role="button"]`, or `[role="menuitem"]` whose label, title, or text looks like Ask.
+
+### Files to inspect
+
+- `src/content/app.js`
+- `src/content/constants.js`
+- `src/content/thread-model.js`
+- `scripts/smoke-extension.mjs`
+
+### How to check
+
+- Verify `getCurrentThreadContext()` reports `isAtTail: false` for the subthread before sending.
+- Confirm `hasActiveRepliedContent()` is false before auto context runs when the composer has no replied-content chip.
+- Inspect the last assistant answer and confirm `findLastAnswerContextRange()` can select visible text.
+- Confirm `selectRangeForNativeAsk()` dispatches both `pointerup` and `mouseup` after setting the selection.
+- Confirm `findNativeAskButton()` can find the Ask control after the synthetic selection release.
+
+### Common fixes
+
+- Update composer or send selectors if ChatGPT moved the composer.
+- Query inside each composer container when adding composer-scoped fallback selectors; do not append descendants directly to a comma-separated selector string.
+- Broaden native Ask control detection only after confirming the new role, label, title, or text.
+- Keep pointerup and mouseup dispatch together; ChatGPT may use either event family for selection UI.
+
 ## 11. Return to Source Does Not Work
 
 ### Symptom

@@ -1,6 +1,8 @@
 import { SELECTORS } from "./constants.js";
 import { hashString, normalizeText, shortTitle } from "./utils.js";
 
+const USER_REFERENCE_CONTROL_SELECTOR = ':is(button, [role="button"]):has(p.line-clamp-3)';
+
 export function readTurnInfos() {
   return [...document.querySelectorAll(SELECTORS.turn)]
     .map((turn, index) => {
@@ -69,16 +71,15 @@ export function findTurnInfoForMessageKey(messageKey, turns = readTurnInfos()) {
 export function getUserQuestionText(message) {
   const clone = message.cloneNode(true);
   clone
-    .querySelectorAll("button:has(p.line-clamp-3), .yacht-source-link")
+    .querySelectorAll(`${USER_REFERENCE_CONTROL_SELECTOR}, .yacht-source-link`)
     .forEach((node) => node.remove());
   return shortTitle(clone.textContent ?? "Ask ChatGPT follow-up");
 }
 
 export function getUserReferenceTexts(message) {
-  return [...message.querySelectorAll("button")]
-    .filter((button) => button.querySelector("p.line-clamp-3"))
-    .map((button) =>
-      normalizeText(button.querySelector("p.line-clamp-3")?.textContent ?? button.textContent ?? "")
+  return [...message.querySelectorAll(USER_REFERENCE_CONTROL_SELECTOR)]
+    .map((control) =>
+      normalizeText(control.querySelector("p.line-clamp-3")?.textContent ?? control.textContent ?? "")
     )
     .filter(Boolean);
 }

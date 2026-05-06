@@ -31,9 +31,12 @@ The `scripts/validate-extension.mjs` script checks that:
 - `manifest_version` is `3`.
 - `manifest.name` is present.
 - `manifest.version` is present.
-- Files referenced by the manifest exist, including the popup, service worker, content scripts, and content CSS.
+- Files referenced by the manifest exist, including the popup, service worker, content scripts, content CSS, and generated extension icons.
+- `manifest.icons` and `action.default_icon` define the expected 16, 32, 48, and 128 pixel icon paths.
 
 Use this check after editing `manifest.json`, moving files, renaming files, or changing popup/content/background entries.
+
+Also use this check after regenerating icon assets from `logo.png` or changing files under `src/icons/`.
 
 ## 3. JavaScript Syntax Checks
 
@@ -71,6 +74,7 @@ The script currently checks:
 - Unpacked extension loading.
 - Header control placement.
 - Selection-driven Ask ChatGPT mapping.
+- Immediate Subthread Mode entry after the Ask user turn appears, before the assistant answer is required.
 - Subthread Mode hiding and return behavior.
 - Source link rendering and click behavior.
 - Multiple subthreads for one source link.
@@ -100,13 +104,15 @@ Use this checklist after automated checks pass, especially when touching content
 
 - Load the unpacked extension from the repository root in Chrome at `chrome://extensions`.
 - Confirm the extension loads without manifest errors.
+- Confirm the extension toolbar and Chrome extension-management screens show the YACHT logo instead of Chrome's default placeholder.
 - Open `https://chatgpt.com/`.
 - Confirm YACHT header controls appear beside the ChatGPT header controls.
 - Select text inside an assistant response.
 - Trigger the native Ask ChatGPT flow from the selection UI.
 - Confirm the new user question is associated with the selected assistant text.
-- Confirm Subthread Mode activates after the assistant response appears.
+- Confirm Subthread Mode activates as soon as the new user question appears, even before the assistant response appears.
 - Confirm unrelated turns are hidden while the subthread remains visible.
+- In a subthread that is not at the latest conversation tail, send a follow-up and confirm auto context attaches the last assistant answer before sending.
 - Click the return-to-source/header back control.
 - Confirm the original source turn becomes visible again.
 - Confirm the generated source link appears around the selected text.

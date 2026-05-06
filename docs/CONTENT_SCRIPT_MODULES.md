@@ -87,7 +87,7 @@ Important internal functions still inside this file include:
 - Source links: `applySourceLinks()`, `clearSourceLinks()`, `restoreAnchorRange()`, `findRangeByTextContext()`, `rangeFromTextOffsets()`, `wrapTextOffsets()`, `wrapRangeAsSingleSourceLink()`, `wrapTextOffsetsByTextNode()`, `createSourceLink()`, `findAnchorAtPoint()`, `findAnchorsAtPoint()`, `openAnchors()`
 - Thread visibility and navigation: `applyMessageVisibility()`, `clearMessageVisibility()`, `navigateToThread()`, `returnToSource()`, `queueScrollToThread()`, `queueScrollToAnchor()`
 - Pending Ask flow: `createPendingAsk()`, `reconcilePendingAsk()`, `schedulePendingReconcile()`, `persistAnchor()`, `persistThread()`
-- Auto context and composer behavior: `shouldAttachAutoContext()`, `ensureAutoContextForCurrentThread()`, `handleSendWithAutoContext()`, `hasActiveRepliedContent()`, `focusComposer()`
+- Auto context and composer behavior: `shouldAttachAutoContext()`, `ensureAutoContextForCurrentThread()`, `handleSendWithAutoContext()`, `selectRangeForNativeAsk()`, `dispatchSelectionReleaseEvent()`, `findNativeAskButton()`, `hasActiveRepliedContent()`, `composerContainers()`, `findComposerDescendant()`, `focusComposer()`
 - Event handlers passed to `events.js`: `handleDocumentPointerDown()`, `handleDocumentPointerMove()`, `handleDocumentPointerUp()`, `handleDocumentPointerCancel()`, `handleDocumentClick()`, `handleDocumentInput()`, `handleDocumentKeyDown()`
 - Diagnostics and cleanup helpers: `restoreOriginalRendering()`, `removeLegacyComposerOverlay()`, `refreshRepliedContentState()`
 
@@ -233,7 +233,7 @@ Exports:
 
 ### When to edit this file
 
-Edit this when ChatGPT changes message markup, role attributes, message IDs, replied-content buttons, or Ask ChatGPT reference text. This is also where to improve how YACHT decides that a new user turn belongs to a selected source anchor.
+Edit this when ChatGPT changes message markup, role attributes, message IDs, replied-content controls, or Ask ChatGPT reference text. This is also where to improve how YACHT decides that a new user turn belongs to a selected source anchor.
 
 ### What not to change casually
 

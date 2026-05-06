@@ -117,7 +117,7 @@ This document explains the main runtime flows in the current extension code. It 
    `persistAnchor` sends `YACHT_UPSERT_ANCHOR` to IndexedDB. `persistThread` sends `YACHT_UPSERT_THREAD` to IndexedDB. Navigation state is later saved by `navigateToThread`.
 
 5. DOM changes made
-   `navigateToThread` schedules render and scroll. The render pass hides non-current messages and later renders source links.
+   When the matching user turn is found, YACHT enters Subthread Mode immediately, before waiting for the assistant answer or IndexedDB round-trip to finish. `navigateToThread` schedules multiple render passes and queued scroll retries. The render pass hides non-current messages and later renders source links.
 
 6. Failure or fallback behavior
    If the pending ask owner mode or thread changes before a root user turn is found, the pending ask is cleared. If no matching Ask reference appears, plain unmatched user turns are given a short grace period and the pending ask times out after `PENDING_ASK_TIMEOUT_MS`. Persistence errors are logged.
@@ -165,7 +165,7 @@ This document explains the main runtime flows in the current extension code. It 
 ## 9. Subthread Mode Message Visibility
 
 1. Trigger
-   `navigateToThread` enters subthread mode and schedules render. `render` then calls `applyMessageVisibility`.
+   `navigateToThread` enters subthread mode and schedules render passes. `render` then calls `applyMessageVisibility`.
 
 2. Main functions involved
    `navigateToThread`, `applyMessageVisibility`, `buildThreadKeyMap`, `effectiveMessageKeysForThread`, `deriveThreadMessageKeys`, `setSubthreadBaselineFromCurrentTurns`
@@ -177,7 +177,7 @@ This document explains the main runtime flows in the current extension code. It 
    `scheduleSaveNavigationState` stores the current mode and thread id in `chrome.storage.local`.
 
 5. DOM changes made
-   Turns not in the current thread receive `yacht-hidden-turn`. Current thread turns remain visible. Header controls update so the back button is shown.
+   Turns not in the current thread receive `yacht-hidden-turn`. Current thread turns remain visible. Header controls update so the back button is shown. Scroll retries run after rendering so a newly created Ask user turn can become the visible target even before the assistant reply appears.
 
 6. Failure or fallback behavior
    `navigateToThread` does nothing if the thread id is not found. If the extension is disabled or fail-safe is active, visibility is restored.
@@ -228,7 +228,7 @@ This document explains the main runtime flows in the current extension code. It 
    Clicking the send button or pressing plain Enter in the composer can run auto context attachment before sending.
 
 2. Main functions involved
-   `shouldAttachAutoContext`, `handleSendWithAutoContext`, `ensureAutoContextForCurrentThread`, `getCurrentThreadContext`, `findLastAnswerContextRange`, `selectRangeForNativeAsk`, `findNativeAskButton`, `waitForElement`, `focusComposer`
+   `shouldAttachAutoContext`, `handleSendWithAutoContext`, `ensureAutoContextForCurrentThread`, `getCurrentThreadContext`, `findLastAnswerContextRange`, `selectRangeForNativeAsk`, `dispatchSelectionReleaseEvent`, `findNativeAskButton`, `waitForElement`, `hasActiveRepliedContent`, `composerContainers`, `findComposerDescendant`, `focusComposer`
 
 3. State fields touched
    `state.autoContextInProgress`, `state.suppressSelectionCaptureUntil`, `state.suppressAskButtonCaptureUntil`, `state.suppressRepliedContentAskUntil`, `state.allowNextSendClickUntil`, `state.pendingAsk`
@@ -237,10 +237,10 @@ This document explains the main runtime flows in the current extension code. It 
    None directly.
 
 5. DOM changes made
-   The code programmatically selects the last answer text range, dispatches selection and mouseup events, clicks ChatGPT's native Ask button if found, clears the selection, focuses the composer, and then clicks send again.
+   The code programmatically selects the last answer text range, dispatches selection, pointerup, and mouseup events, clicks ChatGPT's native Ask control if found, clears the selection, focuses the composer, and then clicks send again.
 
 6. Failure or fallback behavior
-   Auto context only runs when enabled, not fail-safe, not already in progress, no replied content is active, and the current thread is not at the latest conversation tail. Errors are logged at debug level, and the code still allows the follow-up send click path.
+   Auto context only runs when enabled, not fail-safe, not already in progress, no replied content is active, and the current thread is not at the latest conversation tail. Composer-scoped replied-content fallback checks query inside each composer container instead of concatenating descendants onto the comma-separated composer selector. The native Ask control may be a `button`, `[role="button"]`, or `[role="menuitem"]`. Errors are logged at debug level, and the code still allows the follow-up send click path.
 
 ## 13. Route Change Handling
 

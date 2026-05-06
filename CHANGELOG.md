@@ -10,11 +10,14 @@ declared in `manifest.json`.
 ### Added
 
 - Added this changelog to track future project changes.
+- Added generated Chrome extension icon assets from `logo.png` and wired them into the extension manifest.
 
 ### Fixed
 
 - Kept rendered source-link text selectable for additional Ask ChatGPT follow-ups by distinguishing drag selection from direct source-link clicks and disabling native link dragging.
 - Fixed source navigation so drag gestures that start outside a source link and end inside it do not open a subthread, and overlapping anchors show one chooser with every related subthread.
+- Restored auto context attachment by fixing composer-scoped replied-content detection, dispatching pointerup as well as mouseup for synthetic answer selections, and recognizing native Ask controls rendered as button-like roles.
+- Fixed new Ask subthread creation so the view enters Subthread Mode as soon as the matching user turn appears, with support for Ask menuitems and button-like replied-content references.
 
 ## [0.1.0]
 

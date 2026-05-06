@@ -60,6 +60,7 @@ import {
 
 const SOURCE_LINK_DRAG_THRESHOLD_PX = 5;
 const SOURCE_LINK_CLICK_SUPPRESS_MS = 700;
+const ASK_CONTROL_SELECTOR = "button, [role='button'], [role='menuitem']";
 
 function isPendingAskOwnerActive(pending) {
   return (
@@ -123,11 +124,10 @@ function shouldAttachAutoContext() {
   }
 
   const context = getCurrentThreadContext();
-  return Boolean(
-    context &&
-      !context.isAtTail &&
-      findLastAnswerContextRange(getAssistantContextRoot(context.lastAssistant))
-  );
+  const range = context
+    ? findLastAnswerContextRange(getAssistantContextRoot(context.lastAssistant))
+    : null;
+  return Boolean(context && !context.isAtTail && range);
 }
 
 async function ensureAutoContextForCurrentThread() {
@@ -217,22 +217,45 @@ function selectRangeForNativeAsk(range) {
     const clientX = rect.left + rect.width / 2;
     const clientY = rect.top + rect.height / 2;
     const target = document.elementFromPoint(clientX, clientY) ?? document;
+    dispatchSelectionReleaseEvent(target, "pointerup", clientX, clientY);
+    dispatchSelectionReleaseEvent(target, "mouseup", clientX, clientY);
+  }
+}
+
+function dispatchSelectionReleaseEvent(target, type, clientX, clientY) {
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    clientX,
+    clientY,
+    button: 0
+  };
+
+  try {
+    if (type === "pointerup" && typeof PointerEvent === "function") {
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          ...init,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true
+        })
+      );
+      return;
+    }
+
     target.dispatchEvent(
-      new MouseEvent("mouseup", {
-        bubbles: true,
-        cancelable: true,
-        clientX,
-        clientY,
-        button: 0
-      })
+      new MouseEvent(type === "pointerup" ? "mouseup" : type, init)
     );
+  } catch {
+    target.dispatchEvent(new MouseEvent("mouseup", init));
   }
 }
 
 function findNativeAskButton() {
-  return [...document.querySelectorAll("button")]
-    .filter((button) => !button.closest(".yacht-header-controls, .yacht-popover"))
-    .find((button) => isAskButtonLike(button) && isVisibleElement(button));
+  return [...document.querySelectorAll(ASK_CONTROL_SELECTOR)]
+    .filter((control) => !control.closest(".yacht-header-controls, .yacht-popover"))
+    .find((control) => isAskButtonLike(control) && isVisibleElement(control));
 }
 
 function waitForElement(resolveElement, timeoutMs) {
@@ -259,19 +282,30 @@ function waitForElement(resolveElement, timeoutMs) {
 }
 
 function focusComposer() {
-  const composer =
-    document.querySelector(`${SELECTORS.composerContainer} [contenteditable="true"]`) ??
-    document.querySelector(SELECTORS.composerContainer);
+  const composer = findComposerDescendant('[contenteditable="true"]') ?? composerContainers()[0];
   composer?.focus?.();
 }
 
 function hasActiveRepliedContent() {
   return Boolean(
     document.querySelector(SELECTORS.repliedContent) ||
-      document.querySelector(
-        `${SELECTORS.composerContainer} :is(button, [role="button"]):has(p.line-clamp-3)`
-      )
+      findComposerDescendant(':is(button, [role="button"]):has(p.line-clamp-3)')
   );
+}
+
+function composerContainers() {
+  return [...document.querySelectorAll(SELECTORS.composerContainer)];
+}
+
+function findComposerDescendant(selector) {
+  for (const container of composerContainers()) {
+    const match = container.querySelector(selector);
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
 }
 
 async function handleSendWithAutoContext(sendButton) {
@@ -589,13 +623,11 @@ function reconcilePendingAsk(turns = readTurnInfos()) {
     pending.threadId = thread.threadId;
     pending.rootUserMessageKey = userTurn.key;
 
-    Promise.all([persistAnchor(pending.anchor), persistThread(thread)])
-      .then(() => {
-        navigateToThread(thread.threadId);
-      })
-      .catch((error) => {
-        console.error("[Yacht] failed to persist new Ask thread", error);
-      });
+    const persisted = Promise.all([persistAnchor(pending.anchor), persistThread(thread)]);
+    navigateToThread(thread.threadId);
+    persisted.catch((error) => {
+      console.error("[Yacht] failed to persist new Ask thread", error);
+    });
   }
 
   if (!pending.threadId || !pending.rootUserMessageKey) {
@@ -873,7 +905,7 @@ function handleDocumentClick(event) {
     return;
   }
 
-  const clickedControl = target.closest("button, [role='button']");
+  const clickedControl = target.closest(ASK_CONTROL_SELECTOR);
   if (clickedControl && isAskButtonLike(clickedControl)) {
     if (Date.now() < state.suppressAskButtonCaptureUntil) {
       return;
@@ -1183,7 +1215,7 @@ function navigateToThread(threadId) {
   setSubthreadBaselineFromCurrentTurns();
   state.subthreadContinuationArmedUntil = 0;
   scheduleSaveNavigationState();
-  scheduleRender();
+  scheduleRenderPasses([0, 90, 240]);
   queueScrollToThread(threadId);
 }
 

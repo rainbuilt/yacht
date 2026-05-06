@@ -490,8 +490,9 @@ async function main() {
     await sleep(180);
 
     await page.evaluate(() => {
-      const button = document.createElement("button");
-      button.type = "button";
+      const button = document.createElement("div");
+      button.setAttribute("role", "menuitem");
+      button.tabIndex = 0;
       button.textContent = "Ask ChatGPT";
       document.body.append(button);
       button.click();
@@ -503,11 +504,44 @@ async function main() {
         "beforeend",
         `<section data-testid="conversation-turn-2" data-turn="user">
           <div data-message-author-role="user" data-message-id="user-root-1">
-            <button type="button"><p class="line-clamp-3">driven plan</p></button>
+            <div role="button" tabindex="0"><p class="line-clamp-3">driven plan</p></div>
             <div class="user-message-bubble-color">What does the driven plan imply?</div>
           </div>
-        </section>
-        <section data-testid="conversation-turn-3" data-turn="assistant">
+        </section>`
+      );
+    });
+
+    const firstThreadBeforeAnswer = await waitForEval(page, () => {
+      const turns = [...document.querySelectorAll('section[data-testid^="conversation-turn-"]')];
+      const state = {
+        sourceLinks: document.querySelectorAll(".yacht-source-link").length,
+        backHidden: document.querySelector('[data-yacht-control="back"]')?.hidden,
+        hidden: turns.map((turn) => ({
+          id: turn.dataset.testid,
+          hidden: turn.classList.contains("yacht-hidden-turn")
+        }))
+      };
+
+      return state.sourceLinks === 1 &&
+        state.backHidden === false &&
+        state.hidden[0]?.hidden === true &&
+        state.hidden[1]?.hidden === false
+        ? state
+        : false;
+    });
+    assert(
+      firstThreadBeforeAnswer.backHidden === false &&
+        firstThreadBeforeAnswer.hidden[0]?.hidden === true &&
+        firstThreadBeforeAnswer.hidden[1]?.hidden === false,
+      `Expected new Ask user turn to move into Subthread Mode before the assistant answer. State: ${JSON.stringify(
+        firstThreadBeforeAnswer
+      )}`
+    );
+
+    await page.evaluate(() => {
+      document.querySelector("#thread").insertAdjacentHTML(
+        "beforeend",
+        `<section data-testid="conversation-turn-3" data-turn="assistant">
           <div data-message-author-role="assistant" data-message-id="assistant-root-1" data-turn-start-message="true">
             <p>It implies the work should be broken into verifiable implementation steps.</p>
           </div>
@@ -1197,6 +1231,112 @@ async function main() {
     }
     assert(returnedParent.parentVisible, "Expected child back to return to parent subthread.");
     assert(returnedParent.childHidden, "Expected child thread hidden after returning to parent.");
+
+    await page.evaluate(() => {
+      window.__yachtAutoContextSmoke = {
+        askClicks: 0,
+        pointerUps: 0,
+        selectedText: "",
+        sendClicks: 0
+      };
+
+      document.addEventListener(
+        "pointerup",
+        () => {
+          const selectedText = window.getSelection()?.toString?.() ?? "";
+          if (!selectedText.includes("verifiable implementation steps")) {
+            return;
+          }
+
+          window.__yachtAutoContextSmoke.pointerUps += 1;
+          window.__yachtAutoContextSmoke.selectedText = selectedText;
+
+          if (document.querySelector("#auto-context-ask")) {
+            return;
+          }
+
+          const ask = document.createElement("div");
+          ask.id = "auto-context-ask";
+          ask.setAttribute("role", "menuitem");
+          ask.tabIndex = 0;
+          ask.textContent = "Ask ChatGPT";
+          ask.style.position = "fixed";
+          ask.style.left = "24px";
+          ask.style.top = "24px";
+          ask.addEventListener("click", () => {
+            window.__yachtAutoContextSmoke.askClicks += 1;
+            document.querySelector("#thread-bottom").insertAdjacentHTML(
+              "afterbegin",
+              `<button id="auto-context-replied" aria-label="More about replied content" type="button">
+                <p class="line-clamp-3">verifiable implementation steps</p>
+              </button>`
+            );
+          });
+          document.body.append(ask);
+        },
+        true
+      );
+
+      document.querySelector("#composer-submit-button").addEventListener("click", () => {
+        window.__yachtAutoContextSmoke.sendClicks += 1;
+      });
+    });
+
+    const sendPoint = await page.evaluate(() => {
+      const rect = document.querySelector("#composer-submit-button").getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    });
+    await page.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: sendPoint.x,
+      y: sendPoint.y,
+      button: "left",
+      clickCount: 1
+    });
+    await page.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: sendPoint.x,
+      y: sendPoint.y,
+      button: "left",
+      clickCount: 1
+    });
+
+    let autoContext;
+    try {
+      autoContext = await waitForEval(page, () => {
+        const state = window.__yachtAutoContextSmoke;
+        if (
+          state?.pointerUps >= 1 &&
+          state.askClicks === 1 &&
+          state.sendClicks === 1 &&
+          document.querySelector("#auto-context-replied")
+        ) {
+          return state;
+        }
+        return false;
+      });
+    } catch (error) {
+      const autoContextState = await page.evaluate(() => ({
+        smoke: window.__yachtAutoContextSmoke ?? null,
+        hasAsk: Boolean(document.querySelector("#auto-context-ask")),
+        hasReplied: Boolean(document.querySelector("#auto-context-replied")),
+        selection: window.getSelection()?.toString?.() ?? "",
+        backHidden: document.querySelector('[data-yacht-control="back"]')?.hidden,
+        visibleTurns: [...document.querySelectorAll('section[data-testid^="conversation-turn-"]')]
+          .filter((turn) => !turn.classList.contains("yacht-hidden-turn"))
+          .map((turn) => turn.dataset.testid)
+      }));
+      throw new Error(
+        `${error.message}\nAuto context state: ${JSON.stringify(autoContextState, null, 2)}`
+      );
+    }
+    assert(
+      autoContext.selectedText.includes("verifiable implementation steps"),
+      `Expected auto context to select the parent answer text. State: ${JSON.stringify(autoContext)}`
+    );
 
     let targets = await getTargets(PORT);
     let serviceWorkerTarget = targets.find(

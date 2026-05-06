@@ -1,5 +1,7 @@
 References/
 dist/
 node_modules/
+.venv/
 .DS_Store
 AGENTS.md
+screencaptures/

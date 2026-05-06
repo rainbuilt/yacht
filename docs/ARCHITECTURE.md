@@ -12,6 +12,11 @@ Simple map:
 
 ```text
 manifest.json
+  -> extension icons
+       src/icons/icon-16.png
+       src/icons/icon-32.png
+       src/icons/icon-48.png
+       src/icons/icon-128.png
   -> background service worker
        src/background/service-worker.js
   -> content script loader
@@ -29,6 +34,7 @@ manifest.json
 The main runtime components are:
 
 - `manifest.json`: the Chrome extension configuration.
+- `src/icons/icon-*.png`: generated extension and toolbar icons derived from `logo.png`.
 - `src/background/service-worker.js`: the Manifest V3 background service worker.
 - `src/content/content.js`: the content script file listed in the manifest.
 - `src/content/app.js`: the main content application module.
@@ -84,7 +90,24 @@ The popup is declared here:
 ```json
 "action": {
   "default_title": "YACHT",
-  "default_popup": "src/popup/popup.html"
+  "default_popup": "src/popup/popup.html",
+  "default_icon": {
+    "16": "src/icons/icon-16.png",
+    "32": "src/icons/icon-32.png",
+    "48": "src/icons/icon-48.png",
+    "128": "src/icons/icon-128.png"
+  }
+}
+```
+
+The extension-level icon set is declared with the same generated files:
+
+```json
+"icons": {
+  "16": "src/icons/icon-16.png",
+  "32": "src/icons/icon-32.png",
+  "48": "src/icons/icon-48.png",
+  "128": "src/icons/icon-128.png"
 }
 ```
 
@@ -258,6 +281,8 @@ This allows the ChatGPT content-script environment to load those extension modul
 ## 10. Maintenance Rules
 
 Keep `manifest.json` and the actual file structure in sync. If `src/content/app.js` imports a new content module, add that module to `web_accessible_resources`.
+
+If the extension logo changes, regenerate the packaged icon files in `src/icons/` from `logo.png` and verify both `manifest.icons` and `action.default_icon` still point to the generated 16, 32, 48, and 128 pixel PNG files.
 
 Keep `src/content/content.js` small. It should stay focused on loading `src/content/app.js` and reporting load failures.
 

@@ -250,6 +250,8 @@ When the matching user turn is found, YACHT creates and persists:
 - the anchor, through `YACHT_UPSERT_ANCHOR`
 - the thread, through `YACHT_UPSERT_THREAD`
 
+YACHT enters Subthread Mode as soon as that matching user turn is found. It does not wait for the assistant reply or for the IndexedDB write to finish before updating the current view.
+
 When an assistant reply is found and attached to the thread, `state.pendingAsk` is cleared.
 
 ## 9. Message Keys

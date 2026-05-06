@@ -6,6 +6,7 @@ This guide is for maintainers working on YACHT, a Chrome Manifest V3 extension f
 
 - Google Chrome or another Chromium browser that supports Manifest V3 extensions.
 - Node.js, only for running the repository validation script.
+- Python is not required for the extension runtime. If Python is used for local asset or packaging helper commands, create and use `.venv/`; this directory is ignored by git.
 - Basic familiarity with Chrome extension development, content scripts, `chrome.storage`, runtime messages, and IndexedDB.
 
 No build step currently exists. The extension is loaded directly from the repository folder.
@@ -18,6 +19,8 @@ No npm dependencies should be introduced unless explicitly approved. Keep the ex
 manifest.json                    Chrome Manifest V3 extension manifest
 package.json                     npm scripts; currently validation only
 scripts/validate-extension.mjs    Local manifest and file sanity checks
+
+src/icons/icon-*.png              Generated extension and toolbar icon assets
 
 src/background/service-worker.js  MV3 background service worker
 
@@ -43,6 +46,8 @@ src/popup/popup.css               Popup styles
 The content script entry is `src/content/content.js`. It dynamically imports the main implementation from `src/content/app.js` using `chrome.runtime.getURL()`.
 
 Any content module that is dynamically imported must be listed in `web_accessible_resources` in `manifest.json`, or Chrome will block the import.
+
+The Chrome extension icon files live under `src/icons/`. They are generated from the root `logo.png` source image and wired into both `manifest.icons` and `action.default_icon`.
 
 ## Loading the Extension in Chrome
 
@@ -73,7 +78,7 @@ Run:
 npm run validate
 ```
 
-This is the required local validation command. It checks the extension structure and manifest assumptions, including referenced files.
+This is the required local validation command. It checks the extension structure and manifest assumptions, including referenced files and the generated icon files referenced by `manifest.icons` and `action.default_icon`.
 
 Also validate manually in Chrome when behavior touches:
 
@@ -211,6 +216,7 @@ Keep injected CSS scoped with `yacht-` class names. Avoid broad selectors that c
 - Affected ChatGPT workflows were manually checked.
 - No npm dependencies were added without explicit approval.
 - Dynamically imported content modules are listed in `web_accessible_resources`.
+- Manifest icon entries point to the generated files in `src/icons/`.
 - Storage keys and runtime message names were not renamed casually.
 - IndexedDB schema changes include migration planning.
 - Selector changes are isolated to `constants.js` and DOM reader code where practical.

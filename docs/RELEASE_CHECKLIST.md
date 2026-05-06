@@ -17,6 +17,7 @@
 - [ ] Run `npm run validate`.
 - [ ] Confirm `manifest_version` remains `3`.
 - [ ] Confirm all manifest-referenced popup, background, content script, and CSS files exist.
+- [ ] Confirm all manifest-referenced icon files exist.
 - [ ] Run JavaScript syntax checks if practical, especially for changed files, for example `node --check path/to/file.js`.
 - [ ] If practical, run `node scripts/smoke-extension.mjs` or `YACHT_HEADLESS=1 node scripts/smoke-extension.mjs`.
 
@@ -28,9 +29,11 @@
 - [ ] Refresh ChatGPT tabs that were already open before the extension reload.
 - [ ] Verify header controls appear in the ChatGPT header.
 - [ ] Verify creating a new Ask subthread from selected assistant text.
+- [ ] Verify the view enters Subthread Mode as soon as the Ask user turn appears, before waiting for the assistant reply.
 - [ ] Verify returning to source from Subthread Mode.
 - [ ] Verify source links are restored around selected source text.
 - [ ] Verify clicking source links opens the related subthread.
+- [ ] Verify auto context attaches the last assistant answer before sending from a non-tail subthread.
 - [ ] Verify Main Mode and Subthread Mode visibility.
 - [ ] Verify extension off mode restores ChatGPT UI and disables YACHT page modifications.
 
@@ -79,6 +82,7 @@
 ## 10. Manifest Review
 
 - [ ] Verify `action.default_popup` points to the popup HTML.
+- [ ] Verify `manifest.icons` and `action.default_icon` point to the generated 16, 32, 48, and 128 pixel PNG files.
 - [ ] Verify `background.service_worker` points to the MV3 service worker.
 - [ ] Verify content scripts still match only intended ChatGPT URLs.
 - [ ] Verify requested permissions are still necessary.
@@ -86,7 +90,14 @@
 - [ ] Verify content modules listed in `web_accessible_resources`.
 - [ ] Verify every dynamically imported content module is listed in `web_accessible_resources`.
 
-## 11. Documentation Review
+## 11. Chrome Web Store Package Review
+
+- [ ] Package only `manifest.json` and the runtime files under `src/`.
+- [ ] Confirm the package includes `src/icons/icon-16.png`, `src/icons/icon-32.png`, `src/icons/icon-48.png`, and `src/icons/icon-128.png`.
+- [ ] Confirm development files are excluded from the package, including docs, scripts, `dist/`, `node_modules/`, `.venv/`, and the root `logo.png` source image.
+- [ ] Extract the zip package into a temporary directory and run the manifest validation script against the extracted files.
+
+## 12. Documentation Review
 
 - [ ] Verify docs are updated when behavior or structure changes.
 - [ ] Update DOM documentation when ChatGPT selector dependencies change.
@@ -94,7 +105,7 @@
 - [ ] Update testing documentation when validation or smoke-test behavior changes.
 - [ ] Update architecture documentation when manifest, background, popup, storage, or content loading changes.
 
-## 12. Known Risks
+## 13. Known Risks
 
 - [ ] ChatGPT DOM changes can break selectors, Ask detection, source links, header controls, or message visibility.
 - [ ] Source link restoration can fail if ChatGPT rewrites assistant message text or structure.
@@ -102,7 +113,7 @@
 - [ ] Import replace can remove existing user data by design; verify the popup makes that choice clear.
 - [ ] The smoke script uses a controlled DOM fixture and does not replace manual testing on the live ChatGPT page.
 
-## 13. Final Checklist
+## 14. Final Checklist
 
 - [ ] Release scope reviewed.
 - [ ] Version reviewed and updated if releasing.

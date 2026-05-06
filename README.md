@@ -1,6 +1,6 @@
 # YACHT
 
-YACHT is a Chrome extension that helps organize follow-up questions inside ChatGPT conversations. It lets a user select part of an assistant answer, ask a follow-up from that source text, and later jump between the original source and the follow-up thread.
+YACHT (Yet Another ChatGPT Helper Tool) is a Chrome extension that helps organize follow-up questions inside ChatGPT conversations. It lets a user select part of an assistant answer, ask a follow-up from that source text, and later jump between the original source and the follow-up thread.
 
 YACHT is a Chrome Manifest V3 extension for `https://chatgpt.com/*`.
 
